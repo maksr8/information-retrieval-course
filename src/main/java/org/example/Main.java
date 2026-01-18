@@ -8,6 +8,8 @@ import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
 import org.example.storage.BinaryDictionaryWriter;
 import org.example.storage.TextDictionaryWriter;
+
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -53,6 +55,16 @@ public class Main {
 
         System.out.println("\nStorage Format Comparison:");
 
+        Path outDir = Paths.get("out");
+        try {
+            if (!Files.exists(outDir)) {
+                Files.createDirectories(outDir);
+            }
+        } catch (IOException e) {
+            System.err.println("Error creating 'out' directory: " + e.getMessage());
+            return;
+        }
+
         Map<String, DictionaryWriter> writers = Map.of(
                 "JSON", new JsonDictionaryWriter(),
                 "Plain Text", new TextDictionaryWriter(),
@@ -69,7 +81,7 @@ public class Main {
             String extension = formatName.equals("JSON") ? ".json" :
                     formatName.equals("Plain Text") ? ".txt" : ".bin";
 
-            Path path = Paths.get("dictionary" + extension);
+            Path path = outDir.resolve("dictionary" + extension);
 
             try {
                 long startWrite = System.currentTimeMillis();

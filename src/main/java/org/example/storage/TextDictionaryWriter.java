@@ -12,7 +12,9 @@ public class TextDictionaryWriter implements DictionaryWriter {
     public void write(Map<String, Integer> dictionary, Path destination) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(destination, StandardCharsets.UTF_8)) {
             for (Map.Entry<String, Integer> entry : dictionary.entrySet()) {
-                writer.write(entry.getKey() + " : " + entry.getValue());
+                writer.write(entry.getKey());
+                writer.write(" : ");
+                writer.write(String.valueOf(entry.getValue()));
                 writer.newLine();
             }
         }

@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 
 public class Fb2StaxParser implements DocumentParser {
     private final XMLInputFactory factory;
+    private static final int MAX_PARAGRAPH_SIZE = 100 * 1024;
 
     public Fb2StaxParser() {
         this.factory = XMLInputFactory.newInstance();
@@ -20,6 +21,7 @@ public class Fb2StaxParser implements DocumentParser {
         try (FileInputStream fis = new FileInputStream(filePath.toFile())) {
             XMLStreamReader reader = factory.createXMLStreamReader(fis);
 
+            StringBuilder buffer = new StringBuilder();
             boolean insideBody = false;
             boolean insideParagraph = false;
 
@@ -29,39 +31,43 @@ public class Fb2StaxParser implements DocumentParser {
                 switch (event) {
                     case XMLStreamConstants.START_ELEMENT -> {
                         String tagName = reader.getLocalName().toLowerCase();
-
                         if ("body".equals(tagName)) {
                             insideBody = true;
-                        }
-                        else if (insideBody && ("p".equals(tagName) || "v".equals(tagName))) {
+                        } else if (insideBody && ("p".equals(tagName) || "v".equals(tagName))) {
                             insideParagraph = true;
+                            buffer.setLength(0);
                         }
                     }
 
                     case XMLStreamConstants.CHARACTERS -> {
-                        if (insideBody && insideParagraph) {
-                            String text = reader.getText();
-                            if (!text.isBlank()) {
-                                textConsumer.accept(text);
+                        if (insideParagraph) {
+                            String textPart = reader.getText();
+
+                            if (buffer.length() + textPart.length() > MAX_PARAGRAPH_SIZE) {
+                                System.err.println("WARN: Paragraph exceeded max size, truncating.");
+                                insideParagraph = false;
+                            } else {
+                                buffer.append(textPart);
                             }
                         }
                     }
 
                     case XMLStreamConstants.END_ELEMENT -> {
                         String tagName = reader.getLocalName().toLowerCase();
-
                         if ("body".equals(tagName)) {
                             insideBody = false;
-                        }
-                        else if ("p".equals(tagName) || "v".equals(tagName)) {
+                        } else if ("p".equals(tagName) || "v".equals(tagName)) {
                             insideParagraph = false;
+                            if (!buffer.isEmpty()) {
+                                textConsumer.accept(buffer.toString());
+                                buffer.setLength(0);
+                            }
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error in file " + filePath.getFileName() + ": " + e.getMessage());
-            e.printStackTrace();
+            System.err.println("Error parsing file " + filePath + ": " + e.getMessage());
         }
     }
 }

@@ -8,7 +8,6 @@ import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
 import org.example.storage.BinaryDictionaryWriter;
 import org.example.storage.TextDictionaryWriter;
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -20,7 +19,6 @@ public class Main {
     public static void main(String[] args) {
         Tokenizer tokenizer = new RegexTokenizer();
         DocumentParser parser = new Fb2StaxParser();
-        DictionaryWriter writer = new JsonDictionaryWriter();
 
         Map<String, Integer> dictionary = new TreeMap<>();
 

@@ -13,6 +13,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.Collator;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Stream;
@@ -22,7 +24,9 @@ public class Main {
         Tokenizer tokenizer = new RegexTokenizer();
         DocumentParser parser = new Fb2StaxParser();
 
-        Map<String, Integer> dictionary = new TreeMap<>();
+        Collator uaCollator = Collator.getInstance(new Locale("uk", "UA"));
+
+        Map<String, Integer> dictionary = new TreeMap<>(uaCollator);
 
         Path dataDir = Paths.get("data/pr1");
         if (!Files.exists(dataDir)) {

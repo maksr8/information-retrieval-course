@@ -24,7 +24,7 @@ public class Main {
         Tokenizer tokenizer = new RegexTokenizer();
         DocumentParser parser = new Fb2StaxParser();
 
-        Collator uaCollator = Collator.getInstance(new Locale("uk", "UA"));
+        Collator uaCollator = Collator.getInstance(Locale.forLanguageTag("uk-UA"));
 
         Map<String, Integer> dictionary = new TreeMap<>(uaCollator);
 
@@ -105,7 +105,7 @@ public class Main {
                 new java.io.BufferedInputStream(new java.io.FileInputStream(binPath.toFile())))) {
 
             int savedSize = dis.readInt();
-            System.out.println("Word count from data: " + savedSize);
+            System.out.println("Word count from file: " + savedSize);
 
             System.out.println("First 5 entries from file:");
             for (int i = 0; i < 5; i++) {

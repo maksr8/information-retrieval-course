@@ -93,5 +93,24 @@ public class Main {
                 System.err.println("Error with format " + formatName + ": " + e.getMessage());
             }
         }
+
+        System.out.println("\nBinary file check:");
+        Path binPath = outDir.resolve("dictionary.bin");
+
+        try (java.io.DataInputStream dis = new java.io.DataInputStream(
+                new java.io.BufferedInputStream(new java.io.FileInputStream(binPath.toFile())))) {
+
+            int savedSize = dis.readInt();
+            System.out.println("Word count from data: " + savedSize);
+
+            System.out.println("First 5 entries from file:");
+            for (int i = 0; i < 5; i++) {
+                String word = dis.readUTF();
+                int count = dis.readInt();
+                System.out.println("   -> " + word + " : " + count);
+            }
+        } catch (Exception e) {
+            System.err.println("Error reading binary file: " + e.getMessage());
+        }
     }
 }

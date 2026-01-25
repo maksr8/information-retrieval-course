@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.Collator;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
@@ -25,8 +26,9 @@ public class Main {
         DocumentParser parser = new Fb2StaxParser();
 
         Collator uaCollator = Collator.getInstance(Locale.forLanguageTag("uk-UA"));
+        Map<String, Integer> sortedDictionary = new TreeMap<>(uaCollator);
 
-        Map<String, Integer> dictionary = new TreeMap<>(uaCollator);
+        Map<String, Integer> dictionary = new HashMap<>();
 
         Path dataDir = Paths.get("data/pr1");
         if (!Files.exists(dataDir)) {
@@ -50,11 +52,12 @@ public class Main {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        sortedDictionary.putAll(dictionary);
         long duration = System.currentTimeMillis() - startTime;
 
         System.out.println("Processing time: " + duration + " ms");
-        System.out.println("Unique terms found: " + dictionary.size());
-        long totalWords = dictionary.values().stream().mapToLong(i -> i).sum();
+        System.out.println("Unique terms found: " + sortedDictionary.size());
+        long totalWords = sortedDictionary.values().stream().mapToLong(i -> i).sum();
         System.out.println("Total words (token count): " + totalWords);
 
         System.out.println("\nStorage Format Comparison:");
@@ -89,7 +92,7 @@ public class Main {
 
             try {
                 long startWrite = System.currentTimeMillis();
-                currentWriter.write(dictionary, path);
+                currentWriter.write(sortedDictionary, path);
                 long writeTime = System.currentTimeMillis() - startWrite;
                 long sizeKb = Files.size(path) / 1024;
                 System.out.printf("%-15s | %-15d | %-15d%n", formatName, writeTime, sizeKb);

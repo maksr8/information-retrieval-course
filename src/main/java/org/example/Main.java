@@ -2,7 +2,9 @@ package org.example;
 
 import org.example.parsing.DocumentParser;
 import org.example.parsing.Fb2StaxParser;
+import org.example.processing.LuceneSmartNormalizer;
 import org.example.processing.RegexTokenizer;
+import org.example.processing.TermNormalizer;
 import org.example.processing.Tokenizer;
 import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
@@ -26,7 +28,9 @@ public class Main {
     }
 
     private static void practicalTask2() {
-
+        Tokenizer tokenizer = new RegexTokenizer();
+        DocumentParser parser = new Fb2StaxParser();
+        TermNormalizer normalizer = new LuceneSmartNormalizer();
     }
 
 
@@ -53,7 +57,9 @@ public class Main {
                     .forEach(path -> {
                         System.out.println("Processing: " + path.getFileName());
                         parser.parse(path, text -> {
-                            tokenizer.tokenize(text).forEach(word ->
+                            tokenizer.tokenize(text)
+                                    .map(String::toLowerCase)
+                                    .forEach(word ->
                                     dictionary.merge(word, 1, Integer::sum)
                             );
                         });

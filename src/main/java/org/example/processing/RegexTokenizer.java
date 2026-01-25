@@ -1,5 +1,6 @@
 package org.example.processing;
 
+import java.util.regex.MatchResult;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -14,6 +15,6 @@ public class RegexTokenizer implements Tokenizer {
         }
         return WORD_PATTERN.matcher(text)
                 .results()
-                .map(matchResult -> matchResult.group().toLowerCase());
+                .map(MatchResult::group);
     }
 }

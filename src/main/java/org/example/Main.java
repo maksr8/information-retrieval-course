@@ -8,7 +8,6 @@ import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
 import org.example.storage.BinaryDictionaryWriter;
 import org.example.storage.TextDictionaryWriter;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +21,16 @@ import java.util.stream.Stream;
 
 public class Main {
     public static void main(String[] args) {
+//        practicalTask1();
+        practicalTask2();
+    }
+
+    private static void practicalTask2() {
+
+    }
+
+
+    private static void practicalTask1() {
         Tokenizer tokenizer = new RegexTokenizer();
         DocumentParser parser = new Fb2StaxParser();
 
@@ -52,6 +61,7 @@ public class Main {
         } catch (Exception e) {
             e.printStackTrace();
         }
+        System.out.println("Sorting dictionary...");
         sortedDictionary.putAll(dictionary);
         long duration = System.currentTimeMillis() - startTime;
 

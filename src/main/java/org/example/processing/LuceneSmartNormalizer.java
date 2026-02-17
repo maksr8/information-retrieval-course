@@ -30,7 +30,12 @@ public class LuceneSmartNormalizer implements TermNormalizer {
         Analyzer analyzer = cyrillicPattern.matcher(token).find() ? uaAnalyzer : enAnalyzer;
 
         try {
-            return processWithLucene(analyzer, token);
+            String processed = processWithLucene(analyzer, token);
+
+            if (processed == null) {
+                return null;
+            }
+            return processed.toLowerCase();
         } catch (Exception e) {
             return token.toLowerCase();
         }

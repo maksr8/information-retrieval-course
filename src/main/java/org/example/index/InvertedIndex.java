@@ -1,5 +1,8 @@
 package org.example.index;
 
+import org.example.search.SearchResult;
+import org.example.search.SetResult;
+
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
@@ -55,10 +58,9 @@ public class InvertedIndex implements SearchIndex {
     }
 
     @Override
-    public Set<Integer> search(String term) {
+    public SearchResult search(String term) {
         List<Integer> ids = index.get(term);
-        if (ids == null) return Collections.emptySet();
-        return new HashSet<>(ids);
+        return new SetResult(ids == null ? new HashSet<>() : new HashSet<>(ids));
     }
 
     @Override

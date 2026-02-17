@@ -1,12 +1,12 @@
 package org.example.index;
 
+import org.example.search.SearchResult;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Set;
 
 public interface SearchIndex {
     void add(int docId, String term);
-    Set<Integer> search(String term);
+    SearchResult search(String term);
 
     void registerDoc(int docId, String docName);
     String getDocName(int docId);

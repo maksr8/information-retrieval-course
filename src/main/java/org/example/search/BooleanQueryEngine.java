@@ -74,52 +74,39 @@ public class BooleanQueryEngine {
     }
 
     private Set<Integer> evaluateRPN(Queue<String> rpn) {
-        Stack<Set<Integer>> stack = new Stack<>();
+        Stack<SearchResult> stack = new Stack<>();
 
         for (String token : rpn) {
             switch (token) {
                 case "AND" -> {
-                    Set<Integer> right = stack.pop();
-                    Set<Integer> left = stack.pop();
+                    SearchResult right = stack.pop();
+                    SearchResult left = stack.pop();
 
-                    Set<Integer> result = new HashSet<>(left);
-                    result.retainAll(right);
-                    stack.push(result);
+                    stack.push(left.and(right));
                 }
                 case "OR" -> {
-                    Set<Integer> right = stack.pop();
-                    Set<Integer> left = stack.pop();
+                    SearchResult right = stack.pop();
+                    SearchResult left = stack.pop();
 
-                    Set<Integer> result = new HashSet<>(left);
-                    result.addAll(right);
-                    stack.push(result);
+                    stack.push(left.or(right));
                 }
                 case "NOT" -> {
-                    Set<Integer> operand = stack.pop();
+                    SearchResult operand = stack.pop();
 
-                    Set<Integer> result = getAllDocIds();
-                    result.removeAll(operand);
-                    stack.push(result);
+                    stack.push(operand.not(index.getDocCount()));
                 }
                 default -> {
                     String term = normalizer.normalize(token);
                     if (term == null) {
                         System.out.println("Ignored stop word: " + token);
-                        stack.push(new HashSet<>());
+                        stack.push(index.search(""));
                     } else {
-                        System.out.println("Searching for: '" + token + "' -> normalized: '" + term + "'");
-                        Set<Integer> docs = index.search(term);
-                        stack.push(docs == null ? new HashSet<>() : new HashSet<>(docs));
+                        stack.push(index.search(term));
                     }
                 }
             }
         }
 
-        return stack.isEmpty() ? Collections.emptySet() : stack.pop();
-    }
-
-    private Set<Integer> getAllDocIds() {
-        int count = index.getDocCount();
-        return IntStream.range(0, count).boxed().collect(Collectors.toSet());
+        return stack.isEmpty() ? Collections.emptySet() : stack.pop().toSet();
     }
 }

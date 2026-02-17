@@ -1,5 +1,8 @@
 package org.example.index;
 
+import org.example.search.BitSetResult;
+import org.example.search.SearchResult;
+
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
@@ -15,15 +18,9 @@ public class IncidenceMatrixIndex implements SearchIndex {
     }
 
     @Override
-    public Set<Integer> search(String term) {
+    public SearchResult search(String term) {
         BitSet bits = matrix.get(term);
-        if (bits == null) return Collections.emptySet();
-
-        Set<Integer> result = new HashSet<>();
-        for (int i = bits.nextSetBit(0); i >= 0; i = bits.nextSetBit(i + 1)) {
-            result.add(i);
-        }
-        return result;
+        return new BitSetResult(bits == null ? new BitSet() : bits);
     }
 
     @Override

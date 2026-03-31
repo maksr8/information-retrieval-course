@@ -9,6 +9,7 @@ import org.example.processing.LuceneSmartNormalizer;
 import org.example.processing.RegexTokenizer;
 import org.example.processing.TermNormalizer;
 import org.example.processing.Tokenizer;
+import org.example.search.BiWordSearchEngine;
 import org.example.search.BooleanQueryEngine;
 import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
@@ -29,6 +30,7 @@ public class Main {
     private static final Path INDEX_DIR = ROOT_DIR.resolve("indexes");
     private static final Path MATRIX_INDEX_FILE = INDEX_DIR.resolve("matrix.idx");
     private static final Path INVERTED_INDEX_FILE = INDEX_DIR.resolve("inverted.idx");
+    private static final Path BIWORD_INDEX_FILE = INDEX_DIR.resolve("biword.idx");
     private static final Path REPORT_JSON = OUTPUT_DIR.resolve("dictionary.json");
     private static final Path REPORT_TXT = OUTPUT_DIR.resolve("dictionary.txt");
     private static final Path REPORT_BIN = OUTPUT_DIR.resolve("dictionary.bin");
@@ -36,7 +38,8 @@ public class Main {
     public static void main(String[] args) {
         ensureDirectories();
 //        practicalTask1();
-        practicalTask2();
+//        practicalTask2();
+        practicalTask3BiWord();
     }
 
     private static void ensureDirectories() {
@@ -47,6 +50,84 @@ public class Main {
         } catch (IOException e) {
             System.err.println("Error: Cannot create directories. " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    private static void practicalTask3BiWord() {
+        SearchIndex biWordIndex = new InvertedIndex();
+        Tokenizer tokenizer = new RegexTokenizer();
+        TermNormalizer normalizer = new LuceneSmartNormalizer();
+        DocumentParser parser = new Fb2StaxParser();
+
+        boolean forceRebuild = true;
+
+        try {
+            if (!forceRebuild && Files.exists(BIWORD_INDEX_FILE)) {
+                System.out.println("Loading Bi-Word Index from disk...");
+                long start = System.currentTimeMillis();
+                biWordIndex.load(BIWORD_INDEX_FILE);
+                System.out.println("Loaded in: " + (System.currentTimeMillis() - start) + " ms");
+            } else {
+                System.out.println("Building Bi-Word Index from scratch...");
+                long start = System.currentTimeMillis();
+
+                int docIdCounter = 0;
+
+                try (Stream<Path> fileStream = Files.list(DOCUMENTS_DIR)) {
+                    List<Path> fileList = fileStream.filter(p -> p.toString().endsWith(".fb2")).toList();
+
+                    for (Path path : fileList) {
+                        int currentDocId = docIdCounter++;
+                        biWordIndex.registerDoc(currentDocId, path.getFileName().toString());
+
+                        parser.parse(path, text -> {
+                            List<String> tokens = tokenizer.tokenize(text)
+                                    .map(normalizer::normalize)
+                                    .filter(term -> term != null && !term.isBlank())
+                                    .toList();
+
+                            for (int i = 0; i < tokens.size() - 1; i++) {
+                                String biWord = tokens.get(i) + " " + tokens.get(i + 1);
+                                biWordIndex.add(currentDocId, biWord);
+                            }
+                        });
+                    }
+                }
+
+                biWordIndex.seal();
+                long buildTime = System.currentTimeMillis() - start;
+                System.out.println("Bi-Word Index built in " + buildTime + " ms");
+                System.out.println("Total docs: " + biWordIndex.getDocCount());
+
+                long startSave = System.currentTimeMillis();
+                biWordIndex.save(BIWORD_INDEX_FILE);
+                System.out.println("Saved to disk in: " + (System.currentTimeMillis() - startSave) + " ms");
+                System.out.println("File size: " + Files.size(BIWORD_INDEX_FILE) / 1024 + " KB");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        BiWordSearchEngine searchEngine = new BiWordSearchEngine(biWordIndex, tokenizer, normalizer);
+
+        List<String> queries = List.of(
+                "кинуться шукати",
+                "one day",
+                "Захар Беркут",
+                "island of Nantucket",
+                "had thought ahead of everyone else"
+        );
+
+        System.out.println("\n--- Bi-Word Phrase Search Test ---");
+        for (String q : queries) {
+            long searchStart = System.nanoTime();
+            Set<Integer> results = searchEngine.searchPhrase(q);
+            long searchTime = System.nanoTime() - searchStart;
+
+            System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
+            if (!results.isEmpty()) {
+                System.out.println("Docs: " + results.stream().map(biWordIndex::getDocName).toList());
+            }
         }
     }
 

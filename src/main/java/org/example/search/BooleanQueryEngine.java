@@ -5,7 +5,6 @@ import org.example.processing.TermNormalizer;
 
 import java.util.*;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class BooleanQueryEngine {
     private final SearchIndex index;

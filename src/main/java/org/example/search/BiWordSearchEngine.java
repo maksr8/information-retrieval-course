@@ -29,7 +29,7 @@ public class BiWordSearchEngine {
         if (normalizedTokens.isEmpty()) return Set.of();
 
         if (normalizedTokens.size() == 1) {
-            System.out.println("Warning: Bi-word search is not effective for single-term queries");
+            System.out.println("Warning: biword search is not effective for single-term queries");
             return Set.of();
         }
 

@@ -1,8 +1,6 @@
 package org.example;
 
-import org.example.index.IncidenceMatrixIndex;
-import org.example.index.InvertedIndex;
-import org.example.index.SearchIndex;
+import org.example.index.*;
 import org.example.parsing.DocumentParser;
 import org.example.parsing.Fb2StaxParser;
 import org.example.processing.LuceneSmartNormalizer;
@@ -11,6 +9,7 @@ import org.example.processing.TermNormalizer;
 import org.example.processing.Tokenizer;
 import org.example.search.BiWordSearchEngine;
 import org.example.search.BooleanQueryEngine;
+import org.example.search.PositionalQueryEngine;
 import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
 import org.example.storage.BinaryDictionaryWriter;
@@ -21,6 +20,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.Collator;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 public class Main {
@@ -31,6 +31,7 @@ public class Main {
     private static final Path MATRIX_INDEX_FILE = INDEX_DIR.resolve("matrix.idx");
     private static final Path INVERTED_INDEX_FILE = INDEX_DIR.resolve("inverted.idx");
     private static final Path BIWORD_INDEX_FILE = INDEX_DIR.resolve("biword.idx");
+    private static final Path POSITIONAL_INDEX_FILE = INDEX_DIR.resolve("positional.idx");
     private static final Path REPORT_JSON = OUTPUT_DIR.resolve("dictionary.json");
     private static final Path REPORT_TXT = OUTPUT_DIR.resolve("dictionary.txt");
     private static final Path REPORT_BIN = OUTPUT_DIR.resolve("dictionary.bin");
@@ -39,7 +40,8 @@ public class Main {
         ensureDirectories();
 //        practicalTask1();
 //        practicalTask2();
-        practicalTask3BiWord();
+//        practicalTask3BiWord();
+        practicalTask3Positional();
     }
 
     private static void ensureDirectories() {
@@ -53,6 +55,99 @@ public class Main {
         }
     }
 
+    private static void practicalTask3Positional() {
+        PositionalIndex positionalIndex = new PositionalIndex();
+        Tokenizer tokenizer = new RegexTokenizer();
+        TermNormalizer normalizer = new LuceneSmartNormalizer();
+        DocumentParser parser = new Fb2StaxParser();
+
+        boolean forceRebuild = true;
+
+        try {
+            if (!forceRebuild && Files.exists(POSITIONAL_INDEX_FILE)) {
+                System.out.println("Loading Positional Index from disk...");
+                long start = System.currentTimeMillis();
+                positionalIndex.load(POSITIONAL_INDEX_FILE);
+                System.out.println("Loaded in: " + (System.currentTimeMillis() - start) + " ms");
+            } else {
+                System.out.println("Building Positional Index from scratch...");
+                long start = System.currentTimeMillis();
+
+                int docIdCounter = 0;
+                try (Stream<Path> fileStream = Files.list(DOCUMENTS_DIR)) {
+                    List<Path> fileList = fileStream.filter(p -> p.toString().endsWith(".fb2")).toList();
+
+                    for (Path path : fileList) {
+                        int currentDocId = docIdCounter++;
+                        positionalIndex.registerDoc(currentDocId, path.getFileName().toString());
+
+                        AtomicInteger posCounter = new AtomicInteger(0);
+
+                        parser.parse(path, text -> {
+                            tokenizer.tokenize(text)
+                                    .map(normalizer::normalize)
+                                    .forEach(term -> {
+                                        if (term != null && !term.isBlank()) {
+                                            positionalIndex.add(currentDocId, term, posCounter.getAndIncrement());
+                                        }
+                                    });
+                        });
+                    }
+                }
+
+                positionalIndex.seal();
+                long buildTime = System.currentTimeMillis() - start;
+                System.out.println("Positional Index built in " + buildTime + " ms");
+                System.out.println("Total docs: " + positionalIndex.getDocCount());
+
+                long startSave = System.currentTimeMillis();
+                positionalIndex.save(POSITIONAL_INDEX_FILE);
+                System.out.println("Saved to disk in: " + (System.currentTimeMillis() - startSave) + " ms");
+                System.out.println("File size: " + Files.size(POSITIONAL_INDEX_FILE) / 1024 + " KB");
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        PositionalQueryEngine engine = new PositionalQueryEngine(positionalIndex, tokenizer, normalizer);
+
+        System.out.println("\nPositional Phrase Search Test:");
+        List<String> phraseQueries = List.of(
+                "кинуться шукати",
+                "Захар Беркут"
+        );
+
+        for (String q : phraseQueries) {
+            long searchStart = System.nanoTime();
+            Set<Integer> results = engine.searchPhrase(q);
+            long searchTime = System.nanoTime() - searchStart;
+
+            System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
+            if (!results.isEmpty()) {
+                System.out.println("Docs: " + results.stream().map(positionalIndex::getDocName).toList());
+            }
+        }
+
+        System.out.println("\nPositional Proximity Search Test:");
+        List<String> proximityQueries = List.of(
+                "ship /3 wind",
+                "ship /7 wind",
+                "ship /3 island",
+                "Захара /5 Беркута"
+        );
+
+        for (String q : proximityQueries) {
+            long searchStart = System.nanoTime();
+            Set<Integer> results = engine.searchProximity(q);
+            long searchTime = System.nanoTime() - searchStart;
+
+            System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
+            if (!results.isEmpty()) {
+                System.out.println("Docs: " + results.stream().map(positionalIndex::getDocName).toList());
+            }
+        }
+    }
+
     private static void practicalTask3BiWord() {
         SearchIndex biWordIndex = new InvertedIndex();
         Tokenizer tokenizer = new RegexTokenizer();
@@ -63,12 +158,12 @@ public class Main {
 
         try {
             if (!forceRebuild && Files.exists(BIWORD_INDEX_FILE)) {
-                System.out.println("Loading Bi-Word Index from disk...");
+                System.out.println("Loading biword Index from disk...");
                 long start = System.currentTimeMillis();
                 biWordIndex.load(BIWORD_INDEX_FILE);
                 System.out.println("Loaded in: " + (System.currentTimeMillis() - start) + " ms");
             } else {
-                System.out.println("Building Bi-Word Index from scratch...");
+                System.out.println("Building biword Index from scratch...");
                 long start = System.currentTimeMillis();
 
                 int docIdCounter = 0;
@@ -96,7 +191,7 @@ public class Main {
 
                 biWordIndex.seal();
                 long buildTime = System.currentTimeMillis() - start;
-                System.out.println("Bi-Word Index built in " + buildTime + " ms");
+                System.out.println("biword Index built in " + buildTime + " ms");
                 System.out.println("Total docs: " + biWordIndex.getDocCount());
 
                 long startSave = System.currentTimeMillis();
@@ -118,7 +213,7 @@ public class Main {
                 "had thought ahead of everyone else"
         );
 
-        System.out.println("\n--- Bi-Word Phrase Search Test ---");
+        System.out.println("\nbiword Phrase Search Test:");
         for (String q : queries) {
             long searchStart = System.nanoTime();
             Set<Integer> results = searchEngine.searchPhrase(q);

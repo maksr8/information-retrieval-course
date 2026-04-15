@@ -8,7 +8,7 @@ public interface SearchIndex {
     void add(int docId, String term);
     SearchResult search(String term);
 
-    void registerDoc(int docId, String docName);
+    void registerDoc(String docName);
     String getDocName(int docId);
     int getDocCount();
 

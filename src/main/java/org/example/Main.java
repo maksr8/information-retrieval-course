@@ -38,9 +38,9 @@ public class Main {
 
     public static void main(String[] args) {
         ensureDirectories();
-//        practicalTask1();
-//        practicalTask2();
-//        practicalTask3BiWord();
+        practicalTask1();
+        practicalTask2();
+        practicalTask3BiWord();
         practicalTask3Positional();
     }
 
@@ -79,7 +79,7 @@ public class Main {
 
                     for (Path path : fileList) {
                         int currentDocId = docIdCounter++;
-                        positionalIndex.registerDoc(currentDocId, path.getFileName().toString());
+                        positionalIndex.registerDoc(path.getFileName().toString());
 
                         AtomicInteger posCounter = new AtomicInteger(0);
 
@@ -119,7 +119,7 @@ public class Main {
 
         for (String q : phraseQueries) {
             long searchStart = System.nanoTime();
-            Set<Integer> results = engine.searchPhrase(q);
+            List<Integer> results = engine.searchPhrase(q);
             long searchTime = System.nanoTime() - searchStart;
 
             System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
@@ -138,7 +138,7 @@ public class Main {
 
         for (String q : proximityQueries) {
             long searchStart = System.nanoTime();
-            Set<Integer> results = engine.searchProximity(q);
+            List<Integer> results = engine.searchProximity(q);
             long searchTime = System.nanoTime() - searchStart;
 
             System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
@@ -173,7 +173,7 @@ public class Main {
 
                     for (Path path : fileList) {
                         int currentDocId = docIdCounter++;
-                        biWordIndex.registerDoc(currentDocId, path.getFileName().toString());
+                        biWordIndex.registerDoc(path.getFileName().toString());
 
                         parser.parse(path, text -> {
                             List<String> tokens = tokenizer.tokenize(text)
@@ -216,7 +216,7 @@ public class Main {
         System.out.println("\nbiword Phrase Search Test:");
         for (String q : queries) {
             long searchStart = System.nanoTime();
-            Set<Integer> results = searchEngine.searchPhrase(q);
+            List<Integer> results = searchEngine.searchPhrase(q);
             long searchTime = System.nanoTime() - searchStart;
 
             System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
@@ -265,11 +265,11 @@ public class Main {
             System.out.println("\nQuery: " + q);
 
             long startM = System.nanoTime();
-            Set<Integer> resM = engineMatrix.search(q);
+            List<Integer> resM = engineMatrix.search(q);
             long timeM = System.nanoTime() - startM;
 
             long startI = System.nanoTime();
-            Set<Integer> resI = engineInverted.search(q);
+            List<Integer> resI = engineInverted.search(q);
             long timeI = System.nanoTime() - startI;
 
             System.out.printf("Matrix:   %d hits (%,d ns)\n", resM.size(), timeM);
@@ -317,7 +317,7 @@ public class Main {
                 int currentDocId = docIdCounter++;
                 String fileName = path.getFileName().toString();
 
-                index.registerDoc(currentDocId, fileName);
+                index.registerDoc(fileName);
 
                 parser.parse(path, text -> {
                     tokenizer.tokenize(text)

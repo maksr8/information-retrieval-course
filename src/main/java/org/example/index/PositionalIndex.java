@@ -6,27 +6,38 @@ import java.util.*;
 
 public class PositionalIndex {
     private Map<String, Map<Integer, List<Integer>>> index = new HashMap<>();
-    private final Map<Integer, String> docNames = new HashMap<>();
+    private final List<String> docNames = new ArrayList<>();
     private boolean isSealed = false;
 
     public void add(int docId, String term, int position) {
         if (isSealed) throw new IllegalStateException("Index is sealed!");
+
+        if (index.containsKey(term) && index.get(term).containsKey(docId)) {
+            List<Integer> positions = index.get(term).get(docId);
+            if (!positions.isEmpty()) {
+                int lastPos = positions.getLast();
+                if (lastPos >= position) {
+                    throw new IllegalArgumentException("Positions must be added in increasing order! Last: " + lastPos + ", New: " + position);
+                }
+            }
+        }
         
         index.computeIfAbsent(term, k -> new HashMap<>())
              .computeIfAbsent(docId, k -> new ArrayList<>())
              .add(position);
     }
 
-    public Set<Integer> searchPhrase(List<String> terms) {
-        if (terms == null || terms.isEmpty()) return Collections.emptySet();
+    public List<Integer> searchPhrase(List<String> terms) {
+        if (terms == null || terms.isEmpty())
+            return Collections.emptyList();
 
         if (terms.size() == 1) {
             Map<Integer, List<Integer>> docs = index.get(terms.getFirst());
-            return docs == null ? Collections.emptySet() : new HashSet<>(docs.keySet());
+            return docs == null ? Collections.emptyList() : new ArrayList<>(docs.keySet());
         }
 
         Map<Integer, List<Integer>> baseDocs = index.get(terms.getFirst());
-        if (baseDocs == null) return Collections.emptySet();
+        if (baseDocs == null) return Collections.emptyList();
 
         Set<Integer> resultDocs = new HashSet<>();
 
@@ -56,14 +67,16 @@ public class PositionalIndex {
 
             if (docMatches) resultDocs.add(docId);
         }
-        return resultDocs;
+        List<Integer> sortedResult = new ArrayList<>(resultDocs);
+        Collections.sort(sortedResult);
+        return sortedResult;
     }
 
-    public Set<Integer> searchProximity(String term1, String term2, int maxDistance) {
+    public List<Integer> searchProximity(String term1, String term2, int maxDistance) {
         Map<Integer, List<Integer>> docs1 = index.get(term1);
         Map<Integer, List<Integer>> docs2 = index.get(term2);
 
-        if (docs1 == null || docs2 == null) return Collections.emptySet();
+        if (docs1 == null || docs2 == null) return Collections.emptyList();
 
         Set<Integer> commonDocs = new HashSet<>(docs1.keySet());
         commonDocs.retainAll(docs2.keySet());
@@ -92,14 +105,19 @@ public class PositionalIndex {
 
             if (found) resultDocs.add(docId);
         }
-        return resultDocs;
+        List<Integer> sortedResult = new ArrayList<>(resultDocs);
+        Collections.sort(sortedResult);
+        return sortedResult;
     }
 
-    public void registerDoc(int docId, String docName) {
-        docNames.put(docId, docName);
+    public void registerDoc(String docName) {
+        docNames.add(docName);
     }
 
     public String getDocName(int docId) {
+        if(docId < 0 || docId >= docNames.size()) {
+            throw new IllegalArgumentException("Invalid docId: " + docId + ". Valid range is 0 to " + (docNames.size() - 1));
+        }
         return docNames.get(docId);
     }
 
@@ -126,9 +144,8 @@ public class PositionalIndex {
         if (!isSealed) seal();
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(path.toFile())))) {
             out.writeInt(docNames.size());
-            for (Map.Entry<Integer, String> entry : docNames.entrySet()) {
-                out.writeInt(entry.getKey());
-                out.writeUTF(entry.getValue());
+            for (String docName : docNames) {
+                out.writeUTF(docName);
             }
             out.writeInt(index.size());
             for (Map.Entry<String, Map<Integer, List<Integer>>> entry : index.entrySet()) {
@@ -154,7 +171,7 @@ public class PositionalIndex {
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(path.toFile())))) {
             int docCount = in.readInt();
             for (int i = 0; i < docCount; i++) {
-                docNames.put(in.readInt(), in.readUTF());
+                docNames.add(in.readUTF());
             }
             int termCount = in.readInt();
             for (int i = 0; i < termCount; i++) {

@@ -1,7 +1,7 @@
 package org.example.index;
 
 import org.example.search.SearchResult;
-import org.example.search.SetResult;
+import org.example.search.ListResult;
 
 import java.io.*;
 import java.nio.file.Path;
@@ -10,7 +10,7 @@ import java.util.*;
 
 public class InvertedIndex implements SearchIndex {
     private Map<String, List<Integer>> index = new HashMap<>();
-    private final Map<Integer, String> docNames = new HashMap<>();
+    private final List<String> docNames = new ArrayList<>();
     private boolean isSealed = false;
 
     /**
@@ -60,16 +60,23 @@ public class InvertedIndex implements SearchIndex {
     @Override
     public SearchResult search(String term) {
         List<Integer> ids = index.get(term);
-        return new SetResult(ids == null ? new HashSet<>() : new HashSet<>(ids));
+        return new ListResult(ids == null ? Collections.emptyList() : ids);
     }
 
+    /**
+     * Doc IDs start with 0
+     * @param docName
+     */
     @Override
-    public void registerDoc(int docId, String docName) {
-        docNames.put(docId, docName);
+    public void registerDoc(String docName) {
+        docNames.add(docName);
     }
 
     @Override
     public String getDocName(int docId) {
+        if(docId < 0 || docId >= docNames.size()) {
+            throw new IllegalArgumentException("Invalid docId: " + docId + ". Valid range is 0 to " + (docNames.size() - 1));
+        }
         return docNames.get(docId);
     }
 
@@ -85,10 +92,10 @@ public class InvertedIndex implements SearchIndex {
         }
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(path.toFile())))) {
             out.writeInt(docNames.size());
-            for (Map.Entry<Integer, String> entry : docNames.entrySet()) {
-                out.writeInt(entry.getKey());
-                out.writeUTF(entry.getValue());
+            for (String docName : docNames) {
+                out.writeUTF(docName);
             }
+
             out.writeInt(index.size());
             for (Map.Entry<String, List<Integer>> entry : index.entrySet()) {
                 out.writeUTF(entry.getKey());
@@ -109,7 +116,7 @@ public class InvertedIndex implements SearchIndex {
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(path.toFile())))) {
             int docCount = in.readInt();
             for (int i = 0; i < docCount; i++) {
-                docNames.put(in.readInt(), in.readUTF());
+                docNames.add(in.readUTF());
             }
             int termCount = in.readInt();
             for (int i = 0; i < termCount; i++) {

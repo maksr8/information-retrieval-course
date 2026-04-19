@@ -9,7 +9,7 @@ import java.util.*;
 
 public class IncidenceMatrixIndex implements SearchIndex {
     private Map<String, BitSet> matrix = new HashMap<>();
-    private final Map<Integer, String> docNames = new HashMap<>();
+    private final List<String> docNames = new ArrayList<>();
     private boolean isSealed = false;
 
     @Override
@@ -23,13 +23,20 @@ public class IncidenceMatrixIndex implements SearchIndex {
         return new BitSetResult(bits == null ? new BitSet() : bits);
     }
 
+    /**
+     * Doc IDs start with 0
+     * @param docName
+     */
     @Override
-    public void registerDoc(int docId, String docName) {
-        docNames.put(docId, docName);
+    public void registerDoc(String docName) {
+        docNames.add(docName);
     }
 
     @Override
     public String getDocName(int docId) {
+        if(docId < 0 || docId >= docNames.size()) {
+            throw new IllegalArgumentException("Invalid docId: " + docId + ". Valid range is 0 to " + (docNames.size() - 1));
+        }
         return docNames.get(docId);
     }
 
@@ -45,9 +52,8 @@ public class IncidenceMatrixIndex implements SearchIndex {
         }
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(path.toFile())))) {
             out.writeInt(docNames.size());
-            for (Map.Entry<Integer, String> entry : docNames.entrySet()) {
-                out.writeInt(entry.getKey());
-                out.writeUTF(entry.getValue());
+            for (String docName : docNames) {
+                out.writeUTF(docName);
             }
 
             out.writeInt(matrix.size());
@@ -72,9 +78,7 @@ public class IncidenceMatrixIndex implements SearchIndex {
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(path.toFile())))) {
             int docsCount = in.readInt();
             for (int i = 0; i < docsCount; i++) {
-                int id = in.readInt();
-                String name = in.readUTF();
-                docNames.put(id, name);
+                docNames.add(in.readUTF());
             }
 
             int termsCount = in.readInt();

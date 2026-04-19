@@ -4,8 +4,8 @@ import org.example.index.PositionalIndex;
 import org.example.processing.TermNormalizer;
 import org.example.processing.Tokenizer;
 
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,8 +20,9 @@ public class PositionalQueryEngine {
         this.normalizer = normalizer;
     }
 
-    public Set<Integer> searchPhrase(String phrase) {
-        if (phrase == null || phrase.isBlank()) return Set.of();
+    public List<Integer> searchPhrase(String phrase) {
+        if (phrase == null || phrase.isBlank())
+            return Collections.emptyList();
 
         List<String> normalizedTokens = tokenizer.tokenize(phrase)
                 .map(normalizer::normalize)
@@ -31,8 +32,9 @@ public class PositionalQueryEngine {
         return index.searchPhrase(normalizedTokens);
     }
 
-    public Set<Integer> searchProximity(String query) {
-        if (query == null || query.isBlank()) return Set.of();
+    public List<Integer> searchProximity(String query) {
+        if (query == null || query.isBlank())
+            return Collections.emptyList();
 
         Pattern p = Pattern.compile("(.+)\\s+/(\\d+)\\s+(.+)");
         Matcher m = p.matcher(query);
@@ -43,12 +45,12 @@ public class PositionalQueryEngine {
             String term2 = normalizer.normalize(m.group(3).trim());
 
             if (term1 == null || term2 == null || term1.isBlank() || term2.isBlank()) {
-                return Set.of();
+                return Collections.emptyList();
             }
             return index.searchProximity(term1, term2, k);
         }
         
         System.err.println("Invalid proximity format. Use 'term1 /k term2'. Query: " + query);
-        return Set.of();
+        return Collections.emptyList();
     }
 }

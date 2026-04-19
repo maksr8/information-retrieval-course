@@ -4,8 +4,8 @@ import org.example.index.SearchIndex;
 import org.example.processing.TermNormalizer;
 import org.example.processing.Tokenizer;
 
+import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 
 public class BiWordSearchEngine {
     private final SearchIndex index;
@@ -18,19 +18,20 @@ public class BiWordSearchEngine {
         this.normalizer = normalizer;
     }
 
-    public Set<Integer> searchPhrase(String phrase) {
-        if (phrase == null || phrase.isBlank()) return Set.of();
+    public List<Integer> searchPhrase(String phrase) {
+        if (phrase == null || phrase.isBlank()) return Collections.emptyList();
 
         List<String> normalizedTokens = tokenizer.tokenize(phrase)
                 .map(normalizer::normalize)
                 .filter(term -> term != null && !term.isBlank())
                 .toList();
 
-        if (normalizedTokens.isEmpty()) return Set.of();
+        if (normalizedTokens.isEmpty())
+            return Collections.emptyList();
 
         if (normalizedTokens.size() == 1) {
             System.out.println("Warning: biword search is not effective for single-term queries");
-            return Set.of();
+            return Collections.emptyList();
         }
 
         SearchResult combinedResult = null;
@@ -46,6 +47,6 @@ public class BiWordSearchEngine {
             }
         }
 
-        return combinedResult == null ? Set.of() : combinedResult.toSet();
+        return combinedResult == null ? Collections.emptyList() : combinedResult.toList();
     }
 }

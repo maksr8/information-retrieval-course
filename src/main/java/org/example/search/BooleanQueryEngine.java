@@ -21,8 +21,9 @@ public class BooleanQueryEngine {
         this.normalizer = normalizer;
     }
 
-    public Set<Integer> search(String query) {
-        if (query == null || query.isBlank()) return Collections.emptySet();
+    public List<Integer> search(String query) {
+        if (query == null || query.isBlank())
+            return Collections.emptyList();
 
         List<String> tokens = tokenize(query);
 
@@ -72,7 +73,7 @@ public class BooleanQueryEngine {
         return outputQueue;
     }
 
-    private Set<Integer> evaluateRPN(Queue<String> rpn) {
+    private List<Integer> evaluateRPN(Queue<String> rpn) {
         Stack<SearchResult> stack = new Stack<>();
 
         for (String token : rpn) {
@@ -106,6 +107,6 @@ public class BooleanQueryEngine {
             }
         }
 
-        return stack.isEmpty() ? Collections.emptySet() : stack.pop().toSet();
+        return stack.isEmpty() ? Collections.emptyList() : stack.pop().toList();
     }
 }

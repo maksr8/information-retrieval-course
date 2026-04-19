@@ -1,8 +1,6 @@
 package org.example.search;
 
-import java.util.BitSet;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 public class BitSetResult implements SearchResult {
     private final BitSet bitSet;
@@ -36,11 +34,11 @@ public class BitSetResult implements SearchResult {
     }
 
     @Override
-    public Set<Integer> toSet() {
-        Set<Integer> set = new HashSet<>();
+    public List<Integer> toList() {
+        List<Integer> list = new ArrayList<>();
         for (int i = bitSet.nextSetBit(0); i >= 0; i = bitSet.nextSetBit(i + 1)) {
-            set.add(i);
+            list.add(i);
         }
-        return set;
+        return list;
     }
 }

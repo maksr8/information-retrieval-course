@@ -8,16 +8,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
-public class BidirectionalBTreeIndex implements SearchIndex {
+public class BidirectionalBTreeIndex implements WildcardIndex {
     
     private final BTree<String, List<Integer>> directTree;
     private final BTree<String, List<Integer>> inverseTree;
-    private final List<String> docNames;
+    private final List<String> docNames = new ArrayList<>();
 
     public BidirectionalBTreeIndex(int degree) {
         this.directTree = new BTree<>(degree);
         this.inverseTree = new BTree<>(degree);
-        this.docNames = new ArrayList<>();
     }
 
     @Override
@@ -46,35 +45,6 @@ public class BidirectionalBTreeIndex implements SearchIndex {
     public SearchResult search(String term) {
         List<Integer> docs = directTree.get(term);
         return new ListResult(docs != null ? docs : Collections.emptyList());
-    }
-
-    /**
-     * Finds documents for terms starting with the given prefix
-     */
-    public SearchResult searchPrefix(String prefix) {
-        // '\uFFFF' is the maximum Unicode character
-        List<String> matchingTerms = directTree.rangeSearch(prefix, prefix + '\uFFFF');
-        return mergeResults(directTree, matchingTerms);
-    }
-
-    /**
-     * Finds documents for terms ending with the given suffix
-     */
-    public SearchResult searchSuffix(String suffix) {
-        String reversedSuffix = new StringBuilder(suffix).reverse().toString();
-        List<String> matchingTerms = inverseTree.rangeSearch(reversedSuffix, reversedSuffix + '\uFFFF');
-        return mergeResults(inverseTree, matchingTerms);
-    }
-
-    private SearchResult mergeResults(BTree<String, List<Integer>> tree, List<String> terms) {
-        Set<Integer> combinedDocs = new TreeSet<>();
-        for (String term : terms) {
-            List<Integer> docs = tree.get(term);
-            if (docs != null) {
-                combinedDocs.addAll(docs);
-            }
-        }
-        return new ListResult(new ArrayList<>(combinedDocs));
     }
 
     @Override
@@ -151,5 +121,65 @@ public class BidirectionalBTreeIndex implements SearchIndex {
                 inverseTree.put(reversedTerm, inverseDocs);
             }
         }
+    }
+
+    @Override
+    public List<String> getPossibleTerms(String wildcardPattern) {
+        String[] parts = wildcardPattern.split("\\*", -1);
+
+        if (parts.length == 1) {
+            return directTree.get(parts[0]) != null ? List.of(parts[0]) : Collections.emptyList();
+        }
+
+        String prefix = parts[0];
+        String suffix = parts[parts.length - 1];
+
+        boolean hasPrefix = !prefix.isEmpty();
+        boolean hasSuffix = !suffix.isEmpty();
+
+        if (hasPrefix && hasSuffix) { //a*x*b
+            List<String> preTerms = getTermsByPrefix(prefix);
+            List<String> sufTerms = getTermsBySuffix(suffix);
+            Set<String> validSuffixTerms = new HashSet<>(sufTerms);
+            return preTerms.stream()
+                    .filter(validSuffixTerms::contains)
+                    .toList();
+        } else if (hasPrefix) { // a*x*
+            return getTermsByPrefix(prefix);
+        } else if (hasSuffix) { // *x*b
+            return getTermsBySuffix(suffix);
+        } else { // *x*
+            System.err.println("WARN: expensive wildcard query (" + wildcardPattern + "). Use k-gram index for this");
+            return directTree.rangeSearch("", "\uFFFF");
+        }
+    }
+
+    private List<String> getTermsByPrefix(String prefix) {
+        return directTree.rangeSearch(prefix, prefix + '\uFFFF');
+    }
+
+    private List<String> getTermsBySuffix(String suffix) {
+        String reversedSuffix = new StringBuilder(suffix).reverse().toString();
+        List<String> matchingReversedTerms = inverseTree.rangeSearch(reversedSuffix, reversedSuffix + '\uFFFF');
+
+        List<String> normalTerms = new ArrayList<>(matchingReversedTerms.size());
+        for (String revTerm : matchingReversedTerms) {
+            normalTerms.add(new StringBuilder(revTerm).reverse().toString());
+        }
+        return normalTerms;
+    }
+
+    @Override
+    public SearchResult getDocsForTerms(List<String> terms) {
+        SearchResult combined = null;
+        for (String term : terms) {
+            SearchResult res = search(term);
+            if (combined == null) {
+                combined = res;
+            } else {
+                combined = combined.or(res);
+            }
+        }
+        return combined != null ? combined : new ListResult(Collections.emptyList());
     }
 }

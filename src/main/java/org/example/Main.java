@@ -10,6 +10,7 @@ import org.example.processing.Tokenizer;
 import org.example.search.BiWordSearchEngine;
 import org.example.search.BooleanQueryEngine;
 import org.example.search.PositionalQueryEngine;
+import org.example.search.WildcardQueryEngine;
 import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
 import org.example.storage.BinaryDictionaryWriter;
@@ -32,6 +33,9 @@ public class Main {
     private static final Path INVERTED_INDEX_FILE = INDEX_DIR.resolve("inverted.idx");
     private static final Path BIWORD_INDEX_FILE = INDEX_DIR.resolve("biword.idx");
     private static final Path POSITIONAL_INDEX_FILE = INDEX_DIR.resolve("positional.idx");
+    private static final Path BTREE_INDEX_FILE = INDEX_DIR.resolve("btree.idx");
+    //private static final Path PERMUTERM_INDEX_FILE = INDEX_DIR.resolve("permuterm.idx");
+    //private static final Path KGRAM_INDEX_FILE = INDEX_DIR.resolve("kgram.idx");
     private static final Path REPORT_JSON = OUTPUT_DIR.resolve("dictionary.json");
     private static final Path REPORT_TXT = OUTPUT_DIR.resolve("dictionary.txt");
     private static final Path REPORT_BIN = OUTPUT_DIR.resolve("dictionary.bin");
@@ -42,6 +46,7 @@ public class Main {
         practicalTask2();
         practicalTask3BiWord();
         practicalTask3Positional();
+        practicalTask4Wildcard();
     }
 
     private static void ensureDirectories() {
@@ -52,6 +57,88 @@ public class Main {
         } catch (IOException e) {
             System.err.println("Error: Cannot create directories. " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    private static void practicalTask4Wildcard() {
+        Tokenizer tokenizer = new RegexTokenizer();
+        TermNormalizer normalizer = new LuceneSmartNormalizer();
+        DocumentParser parser = new Fb2StaxParser();
+        boolean forceRebuild = true;
+        BidirectionalBTreeIndex bTreeIndex = new BidirectionalBTreeIndex(32);
+        // PermutermIndex permutermIndex = new PermutermIndex();
+        // KGramIndex kGramIndex = new KGramIndex(3);
+
+        buildOrLoadSingleTermIndex(bTreeIndex, BTREE_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
+        //buildOrLoadSingleTermIndex(permutermIndex, PERMUTERM_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
+        //buildOrLoadSingleTermIndex(kGramIndex, KGRAM_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
+
+        List<String> wildcardQueries = List.of(
+                "зах*",
+                "*t",
+                "lo*g",
+                "*ship*",
+                "g*o*al",
+                "j*b*",
+                "g*o*a*t"
+        );
+
+        testWildcardEngine("Bidirectional B-Tree", bTreeIndex, wildcardQueries);
+        // testWildcardEngine("Permuterm Index", permutermIndex, wildcardQueries);
+        // testWildcardEngine("3-Gram Index", kGramIndex, wildcardQueries);
+    }
+
+    private static void buildOrLoadSingleTermIndex(SearchIndex index, Path indexPath, boolean forceRebuild,
+                                                   DocumentParser parser, Tokenizer tokenizer, TermNormalizer normalizer) {
+        try {
+            if (!forceRebuild && Files.exists(indexPath)) {
+                System.out.println("Loading " + index.getClass().getSimpleName() + " from disk...");
+                long start = System.currentTimeMillis();
+                index.load(indexPath);
+                System.out.println("Loaded in: " + (System.currentTimeMillis() - start) + " ms");
+            } else {
+                System.out.println("Building " + index.getClass().getSimpleName() + " from scratch...");
+                long start = System.currentTimeMillis();
+
+                int docIdCounter = 0;
+                try (Stream<Path> fileStream = Files.list(DOCUMENTS_DIR)) {
+                    List<Path> fileList = fileStream.filter(p -> p.toString().endsWith(".fb2")).toList();
+                    for (Path path : fileList) {
+                        int currentDocId = docIdCounter++;
+                        index.registerDoc(path.getFileName().toString());
+
+                        parser.parse(path, text -> {
+                            tokenizer.tokenize(text)
+                                    .map(normalizer::normalize)
+                                    .filter(term -> term != null && !term.isBlank())
+                                    .forEach(term -> index.add(currentDocId, term));
+                        });
+                    }
+                }
+                index.seal();
+                System.out.println("Built in " + (System.currentTimeMillis() - start) + " ms. Docs: " + index.getDocCount());
+                index.save(indexPath);
+            }
+        } catch (IOException e) {
+            System.err.println("Error processing index: " + e.getMessage());
+        }
+    }
+
+    private static void testWildcardEngine(String name, WildcardIndex index, List<String> queries) {
+        System.out.println("\nTesting Wildcard Engine: " + name);
+        WildcardQueryEngine engine = new WildcardQueryEngine(index);
+
+        for (String q : queries) {
+            long searchStart = System.nanoTime();
+            List<Integer> results = engine.search(q);
+            long searchTime = System.nanoTime() - searchStart;
+
+            System.out.printf("\nQuery: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
+            if (!results.isEmpty()) {
+                int maxDisplay = 20;
+                List<String> docNames = results.stream().limit(maxDisplay).map(index::getDocName).toList();
+                System.out.println("Docs: " + docNames + (results.size() > maxDisplay ? " ..." : ""));
+            }
         }
     }
 

@@ -7,7 +7,26 @@ public class ListResult implements SearchResult {
     private final List<Integer> docs;
 
     public ListResult(List<Integer> docs) {
-        this.docs = docs;
+        if (docs == null || docs.isEmpty()) {
+            this.docs = new ArrayList<>();
+            return;
+        }
+
+        boolean needsFixing = false;
+        for (int i = 1; i < docs.size(); i++) {
+            if (docs.get(i) <= docs.get(i - 1)) {
+                needsFixing = true;
+                break;
+            }
+        }
+
+        if (needsFixing) {
+            System.err.println("WARN: ListResult received an unsorted or duplicated list. Fixing it dynamically. Check index builders!");
+            this.docs = docs.stream().distinct().sorted().toList();
+        } else {
+            this.docs = docs;
+        }
+//        this.docs = docs;
     }
 
     @Override

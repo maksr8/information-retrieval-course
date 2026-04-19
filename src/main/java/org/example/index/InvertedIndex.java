@@ -130,4 +130,12 @@ public class InvertedIndex implements SearchIndex {
             }
         }
     }
+
+    public List<String> getAllTerms() {
+        return new ArrayList<>(index.keySet());
+    }
+
+    public boolean hasTerm(String term) {
+        return index.containsKey(term);
+    }
 }

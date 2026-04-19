@@ -58,11 +58,11 @@ public class PermutermIndex implements WildcardIndex {
             String last = parts[parts.length - 1];
 
             if (!first.isEmpty() && !last.isEmpty()) { // X*Y*Z
-                prefixToSearch = last + END_MARKER + first;
+                prefixToSearch = last + END_MARKER + first; // "Z X"
             } else if (!first.isEmpty()) { // X*Y*
-                prefixToSearch = END_MARKER + first;
+                prefixToSearch = END_MARKER + first; // " X"
             } else if (!last.isEmpty()) { // *Y*Z
-                prefixToSearch = last + END_MARKER;
+                prefixToSearch = last + END_MARKER; // "Z "
             } else { // *Y*
                 System.err.println("WARN: expensive wildcard query (" + wildcardPattern + "). Use k-gram index for this");
             }

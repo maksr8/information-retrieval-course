@@ -29,13 +29,15 @@ public class Main {
     private static final Path DOCUMENTS_DIR = ROOT_DIR.resolve("documents");
     private static final Path OUTPUT_DIR = ROOT_DIR.resolve("out");
     private static final Path INDEX_DIR = ROOT_DIR.resolve("indexes");
+
     private static final Path MATRIX_INDEX_FILE = INDEX_DIR.resolve("matrix.idx");
     private static final Path INVERTED_INDEX_FILE = INDEX_DIR.resolve("inverted.idx");
     private static final Path BIWORD_INDEX_FILE = INDEX_DIR.resolve("biword.idx");
     private static final Path POSITIONAL_INDEX_FILE = INDEX_DIR.resolve("positional.idx");
     private static final Path BTREE_INDEX_FILE = INDEX_DIR.resolve("btree.idx");
     private static final Path PERMUTERM_INDEX_FILE = INDEX_DIR.resolve("permuterm.idx");
-    //private static final Path KGRAM_INDEX_FILE = INDEX_DIR.resolve("kgram.idx");
+    private static final Path KGRAM_INDEX_FILE = INDEX_DIR.resolve("kgram.idx");
+
     private static final Path REPORT_JSON = OUTPUT_DIR.resolve("dictionary.json");
     private static final Path REPORT_TXT = OUTPUT_DIR.resolve("dictionary.txt");
     private static final Path REPORT_BIN = OUTPUT_DIR.resolve("dictionary.bin");
@@ -66,12 +68,12 @@ public class Main {
         DocumentParser parser = new Fb2StaxParser();
         boolean forceRebuild = true;
         BidirectionalBTreeIndex bTreeIndex = new BidirectionalBTreeIndex(32);
-         PermutermIndex permutermIndex = new PermutermIndex(32);
-//        KGramIndex kGramIndex = new KGramIndex(3);
+        PermutermIndex permutermIndex = new PermutermIndex(32);
+        KGramIndex kGramIndex = new KGramIndex(3, 32);
 
         buildOrLoadSingleTermIndex(bTreeIndex, BTREE_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
         buildOrLoadSingleTermIndex(permutermIndex, PERMUTERM_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
-//        buildOrLoadSingleTermIndex(kGramIndex, KGRAM_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
+        buildOrLoadSingleTermIndex(kGramIndex, KGRAM_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
 
         List<String> wildcardQueries = List.of(
                 "зах*",
@@ -80,12 +82,13 @@ public class Main {
                 "*ship*",
                 "g*o*al",
                 "j*b*",
-                "g*o*a*t"
+                "g*o*a*t",
+                "*iq*"
         );
 
         testWildcardEngine("Bidirectional B-Tree", bTreeIndex, wildcardQueries);
         testWildcardEngine("Permuterm Index", permutermIndex, wildcardQueries);
-//        testWildcardEngine("3-Gram Index", kGramIndex, wildcardQueries);
+        testWildcardEngine("k-Gram Index", kGramIndex, wildcardQueries);
     }
 
     private static void buildOrLoadSingleTermIndex(SearchIndex index, Path indexPath, boolean forceRebuild,
@@ -125,7 +128,7 @@ public class Main {
     }
 
     private static void testWildcardEngine(String name, WildcardIndex index, List<String> queries) {
-        System.out.println("\nTesting Wildcard Engine: " + name);
+        System.out.println("\n             Testing Wildcard Engine: " + name);
         WildcardQueryEngine engine = new WildcardQueryEngine(index);
 
         for (String q : queries) {

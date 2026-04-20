@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DocumentFullRegistry {
+public class DocumentFullRegistry implements DocRegistry {
     private final List<DocumentMetadata> documents = new ArrayList<>();
 
     public int registerDoc(String gutenbergId, String title, String author) {
@@ -19,6 +19,14 @@ public class DocumentFullRegistry {
             throw new IllegalArgumentException("Invalid docId: " + docId);
         }
         return documents.get(docId);
+    }
+
+    public String getDocName(int docId) {
+        DocumentMetadata meta = getMetadata(docId);
+        return String.format("%s by %s (Gutenberg ID: %s)",
+                meta.title() != null ? meta.title() : "Unknown Title",
+                meta.author() != null ? meta.author() : "Unknown Author",
+                meta.gutenbergId());
     }
 
     public int getDocCount() {

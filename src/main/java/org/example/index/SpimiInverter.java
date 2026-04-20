@@ -67,7 +67,7 @@ public class SpimiInverter {
         List<String> sortedTerms = new ArrayList<>(dictionary.keySet());
         Collections.sort(sortedTerms);
 
-        Path blockPath = outputDir.resolve("block_" + blockCounter + ".dat");
+        Path blockPath = outputDir.resolve("block_" + blockCounter + ".bin");
 
         try (DataOutputStream out = new DataOutputStream(
                 new BufferedOutputStream(new FileOutputStream(blockPath.toFile())))) {

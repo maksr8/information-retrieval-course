@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DocumentRegistry {
+public class DocumentRegistry implements DocRegistry{
     private final List<String> docNames = new ArrayList<>();
 
     public int registerDoc(String docName) {

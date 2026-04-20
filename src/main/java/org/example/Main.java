@@ -16,6 +16,7 @@ import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
 import org.example.storage.TextDictionaryWriter;
 
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +24,8 @@ import java.nio.file.Paths;
 import java.text.Collator;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class Main {
@@ -41,9 +44,18 @@ public class Main {
     private static final Path REPORT_TXT = OUTPUT_DIR.resolve("dictionary.txt");
     private static final Path REPORT_BIN = OUTPUT_DIR.resolve("dictionary.bin");
 
+    private static final Path GUTENBERG_TOKENS_DIR = Paths.get("D:\\1Documents\\gutenberg_full\\SPGC-tokens-2018-07-18");
+//    private static final Path GUTENBERG_TOKENS_DIR = Paths.get("D:\\1Documents\\gutenberg_small");
+    private static final Path GUTENBERG_CSV_FILE = Paths.get("D:\\1Documents\\gutenberg_full\\SPGC-metadata-2018-07-18.csv");
+    private static final Path GUTENBERG_INDEX_DIR = Paths.get("D:\\1Documents\\gutenberg_index");
+
+    private static final Path FULL_REGISTRY_FILE = GUTENBERG_INDEX_DIR.resolve("full_registry.dat");
+
     private static final DocumentParser parser = new Fb2StaxParser();
     private static final Tokenizer tokenizer = new RegexTokenizer();
     private static final TermNormalizer normalizer = new LuceneSmartNormalizer();
+
+    private static DocumentFullRegistry activeRegistry = null;
 
     public static void main(String[] args) {
         ensureDirectories();
@@ -55,6 +67,12 @@ public class Main {
         practicalTask3BiWord(forceRebuild);
         practicalTask3Positional(forceRebuild);
         practicalTask4Wildcard(forceRebuild);
+
+        //Task 5
+        buildFullRegistry();
+        loadFullRegistry();
+
+        printFullRegistry();
     }
 
     private static void ensureDirectories() {
@@ -65,6 +83,107 @@ public class Main {
         } catch (IOException e) {
             System.err.println("Error: Cannot create directories. " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    private static void printFullRegistry() {
+        if (activeRegistry == null) {
+            System.out.println("No registry loaded to display.");
+            return;
+        }
+        int totalDocs = activeRegistry.getDocCount();
+        System.out.println("Full registry total documents: " + totalDocs);
+
+        System.out.println("\n--- Registry Sample ---");
+        int displayLimit = Math.min(500, totalDocs);
+        for (int i = 0; i < displayLimit; i++) {
+            DocumentMetadata meta = activeRegistry.getMetadata(i);
+            System.out.printf("Internal DocID: %-4d | Gutenberg ID: %-6s | Title: %s%n",
+                    meta.docId(), meta.gutenbergId(), meta.title());
+        }
+    }
+
+    private static void loadFullRegistry() {
+        System.out.println("Loading registry from disk (" + FULL_REGISTRY_FILE + ")...");
+        if (Files.exists(FULL_REGISTRY_FILE)) {
+            try {
+                activeRegistry = new DocumentFullRegistry();
+                activeRegistry.load(FULL_REGISTRY_FILE);
+            } catch (IOException e) {
+                System.err.println("Error while loading the registry: " + e.getMessage());
+                activeRegistry = null;
+            }
+        } else {
+            System.err.println("Registry file not found. Please run buildFullRegistry() first.");
+        }
+    }
+
+    private static void buildFullRegistry() {
+        System.out.println("Reading metadata CSV from: " + GUTENBERG_CSV_FILE);
+        Map<String, String[]> metadataMap = new HashMap<>();
+
+        Pattern csvPattern = Pattern.compile("\"([^\"]*)\"|(?<=,|^)([^,]*)(?:,|$)");
+
+        if (Files.exists(GUTENBERG_CSV_FILE)) {
+            try (BufferedReader br = Files.newBufferedReader(GUTENBERG_CSV_FILE)) {
+                String line;
+                boolean firstLine = true;
+                while ((line = br.readLine()) != null) {
+                    if (firstLine) {
+                        firstLine = false; continue;
+                    }
+
+                    Matcher matcher = csvPattern.matcher(line);
+                    List<String> fields = new ArrayList<>();
+                    while (matcher.find()) {
+                        String match = matcher.group(1) != null ? matcher.group(1) : matcher.group(2);
+                        fields.add(match);
+                    }
+
+                    if (fields.size() >= 3) {
+                        String id = fields.get(0);
+                        String title = fields.get(1);
+                        String author = fields.get(2);
+                        metadataMap.put(id, new String[]{title, author});
+                    }
+                }
+            } catch (IOException e) {
+                System.err.println("Error reading CSV: " + e.getMessage());
+            }
+        } else {
+            System.err.println("WARN: CSV file not found. Metadata will be marked as 'Unknown'.");
+        }
+
+        System.out.println("Scanning token files and building registry...");
+        DocumentFullRegistry registry = new DocumentFullRegistry();
+
+        try (Stream<Path> paths = Files.list(GUTENBERG_TOKENS_DIR)) {
+            paths.filter(p -> p.getFileName().toString().endsWith("_tokens.txt"))
+                    .sorted((p1, p2) -> {
+                        String name1 = p1.getFileName().toString().split("_")[0].replace("PG", "");
+                        String name2 = p2.getFileName().toString().split("_")[0].replace("PG", "");
+                        try {
+                            return Integer.compare(Integer.parseInt(name1), Integer.parseInt(name2));
+                        } catch (NumberFormatException ex) {
+                            return name1.compareTo(name2);
+                        }
+                    })
+                    .forEach(path -> {
+                        String filename = path.getFileName().toString();
+                        String gutenbergId = filename.split("_")[0];
+
+                        String[] meta = metadataMap.getOrDefault(gutenbergId, new String[]{"Unknown Title", "Unknown Author"});
+                        registry.registerDoc(gutenbergId, meta[0], meta[1]);
+                    });
+        } catch (IOException e) {
+            System.err.println("Error reading tokens directory: " + e.getMessage());
+        }
+
+        try {
+            registry.save(FULL_REGISTRY_FILE);
+            System.out.println("Registry successfully saved! Total documents registered: " + registry.getDocCount());
+        } catch (IOException e) {
+            System.err.println("Failed to save registry: " + e.getMessage());
         }
     }
 

@@ -5,12 +5,10 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 public interface SearchIndex {
-    void add(int docId, String term);
-    SearchResult search(String term);
+    void add(String term, int position);
+    void startNewDocument();
 
-    void registerDoc(String docName);
-    String getDocName(int docId);
-    int getDocCount();
+    SearchResult search(String term);
 
     void save(Path path) throws IOException;
     void load(Path path) throws IOException;

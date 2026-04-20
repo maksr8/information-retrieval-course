@@ -1,19 +1,24 @@
 package org.example.index;
 
+import org.example.search.ListResult;
+import org.example.search.SearchResult;
+
 import java.io.*;
 import java.nio.file.Path;
 import java.util.*;
 
-public class PositionalIndex {
+public class PositionalIndex implements SearchIndex {
     private Map<String, Map<Integer, List<Integer>>> index = new HashMap<>();
-    private final List<String> docNames = new ArrayList<>();
+    private int currentDocId = -1;
     private boolean isSealed = false;
 
-    public void add(int docId, String term, int position) {
+    @Override
+    public void add(String term, int position) {
         if (isSealed) throw new IllegalStateException("Index is sealed!");
+        if (currentDocId < 0) throw new IllegalStateException("Call startNewDocument() first!");
 
-        if (index.containsKey(term) && index.get(term).containsKey(docId)) {
-            List<Integer> positions = index.get(term).get(docId);
+        if (index.containsKey(term) && index.get(term).containsKey(currentDocId)) {
+            List<Integer> positions = index.get(term).get(currentDocId);
             if (!positions.isEmpty()) {
                 int lastPos = positions.getLast();
                 if (lastPos >= position) {
@@ -23,21 +28,34 @@ public class PositionalIndex {
         }
         
         index.computeIfAbsent(term, k -> new HashMap<>())
-             .computeIfAbsent(docId, k -> new ArrayList<>())
+             .computeIfAbsent(currentDocId, k -> new ArrayList<>())
              .add(position);
     }
 
-    public List<Integer> searchPhrase(List<String> terms) {
+    @Override
+    public void startNewDocument() {
+        if (isSealed) throw new IllegalStateException("Index is sealed!");
+        currentDocId++;
+    }
+
+    @Override
+    public SearchResult search(String term) {
+        if (!isSealed) throw new IllegalStateException("Index is not sealed!");
+        Map<Integer, List<Integer>> docs = index.get(term);
+        return new ListResult(docs == null ? Collections.emptyList() : new ArrayList<>(docs.keySet()));
+    }
+
+    public SearchResult searchPhrase(List<String> terms) {
         if (terms == null || terms.isEmpty())
-            return Collections.emptyList();
+            return new ListResult(Collections.emptyList());
 
         if (terms.size() == 1) {
             Map<Integer, List<Integer>> docs = index.get(terms.getFirst());
-            return docs == null ? Collections.emptyList() : new ArrayList<>(docs.keySet());
+            return new ListResult(docs == null ? Collections.emptyList() : new ArrayList<>(docs.keySet()));
         }
 
         Map<Integer, List<Integer>> baseDocs = index.get(terms.getFirst());
-        if (baseDocs == null) return Collections.emptyList();
+        if (baseDocs == null) return new ListResult(Collections.emptyList());
 
         Set<Integer> resultDocs = new HashSet<>();
 
@@ -69,14 +87,14 @@ public class PositionalIndex {
         }
         List<Integer> sortedResult = new ArrayList<>(resultDocs);
         Collections.sort(sortedResult);
-        return sortedResult;
+        return new ListResult(sortedResult);
     }
 
-    public List<Integer> searchProximity(String term1, String term2, int maxDistance) {
+    public SearchResult searchProximity(String term1, String term2, int maxDistance) {
         Map<Integer, List<Integer>> docs1 = index.get(term1);
         Map<Integer, List<Integer>> docs2 = index.get(term2);
 
-        if (docs1 == null || docs2 == null) return Collections.emptyList();
+        if (docs1 == null || docs2 == null) return new ListResult(Collections.emptyList());
 
         Set<Integer> commonDocs = new HashSet<>(docs1.keySet());
         commonDocs.retainAll(docs2.keySet());
@@ -107,23 +125,10 @@ public class PositionalIndex {
         }
         List<Integer> sortedResult = new ArrayList<>(resultDocs);
         Collections.sort(sortedResult);
-        return sortedResult;
+        return new ListResult(sortedResult);
     }
 
-    public void registerDoc(String docName) {
-        docNames.add(docName);
-    }
 
-    public String getDocName(int docId) {
-        if(docId < 0 || docId >= docNames.size()) {
-            throw new IllegalArgumentException("Invalid docId: " + docId + ". Valid range is 0 to " + (docNames.size() - 1));
-        }
-        return docNames.get(docId);
-    }
-
-    public int getDocCount() {
-        return docNames.size();
-    }
 
     public void seal() {
         if (isSealed) return;
@@ -143,10 +148,6 @@ public class PositionalIndex {
     public void save(Path path) throws IOException {
         if (!isSealed) seal();
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(path.toFile())))) {
-            out.writeInt(docNames.size());
-            for (String docName : docNames) {
-                out.writeUTF(docName);
-            }
             out.writeInt(index.size());
             for (Map.Entry<String, Map<Integer, List<Integer>>> entry : index.entrySet()) {
                 out.writeUTF(entry.getKey());
@@ -167,12 +168,7 @@ public class PositionalIndex {
     public void load(Path path) throws IOException {
         this.index = new TreeMap<>();
         this.isSealed = true;
-        docNames.clear();
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(path.toFile())))) {
-            int docCount = in.readInt();
-            for (int i = 0; i < docCount; i++) {
-                docNames.add(in.readUTF());
-            }
             int termCount = in.readInt();
             for (int i = 0; i < termCount; i++) {
                 String term = in.readUTF();

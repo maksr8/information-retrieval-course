@@ -1,9 +1,16 @@
 package org.example.index;
 
-import org.example.search.SearchResult;
+import java.util.Collection;
 import java.util.List;
 
-public interface WildcardIndex extends SearchIndex {
+public interface WildcardIndex {
+    void buildFromDictionary(Collection<String> dictionary);
+    /**
+     * Adds a term to the index.
+     * DO NOT ADD DUPLICATES!
+     * Uniqueness is not checked for performance reasons!
+     * @param term
+     */
+    void addTerm(String term);
     List<String> getPossibleTerms(String wildcardPattern);
-    SearchResult getDocsForTerms(List<String> terms);
 }

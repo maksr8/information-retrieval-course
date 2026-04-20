@@ -29,7 +29,7 @@ public class PositionalQueryEngine {
                 .filter(term -> term != null && !term.isBlank())
                 .toList();
 
-        return index.searchPhrase(normalizedTokens);
+        return index.searchPhrase(normalizedTokens).toList();
     }
 
     public List<Integer> searchProximity(String query) {
@@ -47,7 +47,7 @@ public class PositionalQueryEngine {
             if (term1 == null || term2 == null || term1.isBlank() || term2.isBlank()) {
                 return Collections.emptyList();
             }
-            return index.searchProximity(term1, term2, k);
+            return index.searchProximity(term1, term2, k).toList();
         }
         
         System.err.println("Invalid proximity format. Use 'term1 /k term2'. Query: " + query);

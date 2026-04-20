@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 public class BooleanQueryEngine {
     private final SearchIndex index;
     private final TermNormalizer normalizer;
+    private final int docCount;
 
     private static final Map<String, Integer> PRIORITY = Map.of(
             "NOT", 3,
@@ -16,9 +17,10 @@ public class BooleanQueryEngine {
             "OR", 1
     );
 
-    public BooleanQueryEngine(SearchIndex index, TermNormalizer normalizer) {
+    public BooleanQueryEngine(SearchIndex index, TermNormalizer normalizer, int docCount) {
         this.index = index;
         this.normalizer = normalizer;
+        this.docCount = docCount;
     }
 
     public List<Integer> search(String query) {
@@ -93,7 +95,7 @@ public class BooleanQueryEngine {
                 case "NOT" -> {
                     SearchResult operand = stack.pop();
 
-                    stack.push(operand.not(index.getDocCount()));
+                    stack.push(operand.not(docCount));
                 }
                 default -> {
                     String term = normalizer.normalize(token);

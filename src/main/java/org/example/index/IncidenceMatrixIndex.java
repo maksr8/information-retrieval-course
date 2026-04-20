@@ -5,44 +5,35 @@ import org.example.search.SearchResult;
 
 import java.io.*;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
 
 public class IncidenceMatrixIndex implements SearchIndex {
     private Map<String, BitSet> matrix = new HashMap<>();
-    private final List<String> docNames = new ArrayList<>();
+    private int currentDocId = -1;
     private boolean isSealed = false;
 
     @Override
-    public void add(int docId, String term) {
-        matrix.computeIfAbsent(term, k -> new BitSet()).set(docId);
+    public void add(String term, int position) {
+        if (isSealed) throw new IllegalStateException("Index is sealed!");
+        if (currentDocId < 0) throw new IllegalStateException("Call startNewDocument() first!");
+
+        matrix.computeIfAbsent(term, k -> new BitSet()).set(currentDocId);
+    }
+
+    @Override
+    public void startNewDocument() {
+        if (isSealed) throw new IllegalStateException("Index is sealed!");
+        currentDocId++;
     }
 
     @Override
     public SearchResult search(String term) {
+        if (!isSealed) throw new IllegalStateException("Index is not sealed!");
         BitSet bits = matrix.get(term);
         return new BitSetResult(bits == null ? new BitSet() : bits);
-    }
-
-    /**
-     * Doc IDs start with 0
-     * @param docName
-     */
-    @Override
-    public void registerDoc(String docName) {
-        docNames.add(docName);
-    }
-
-    @Override
-    public String getDocName(int docId) {
-        if(docId < 0 || docId >= docNames.size()) {
-            throw new IllegalArgumentException("Invalid docId: " + docId + ". Valid range is 0 to " + (docNames.size() - 1));
-        }
-        return docNames.get(docId);
-    }
-
-    @Override
-    public int getDocCount() {
-        return docNames.size();
     }
 
     @Override
@@ -51,11 +42,6 @@ public class IncidenceMatrixIndex implements SearchIndex {
             seal();
         }
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(path.toFile())))) {
-            out.writeInt(docNames.size());
-            for (String docName : docNames) {
-                out.writeUTF(docName);
-            }
-
             out.writeInt(matrix.size());
             for (Map.Entry<String, BitSet> entry : matrix.entrySet()) {
                 out.writeUTF(entry.getKey());
@@ -73,14 +59,8 @@ public class IncidenceMatrixIndex implements SearchIndex {
     public void load(Path path) throws IOException {
         this.matrix = new TreeMap<>();
         this.isSealed = true;
-        docNames.clear();
 
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(path.toFile())))) {
-            int docsCount = in.readInt();
-            for (int i = 0; i < docsCount; i++) {
-                docNames.add(in.readUTF());
-            }
-
             int termsCount = in.readInt();
             for (int i = 0; i < termsCount; i++) {
                 String term = in.readUTF();

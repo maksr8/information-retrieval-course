@@ -1,7 +1,7 @@
 package org.example.index;
 
-import org.example.search.SearchResult;
 import org.example.search.ListResult;
+import org.example.search.SearchResult;
 
 import java.io.*;
 import java.nio.file.Path;
@@ -10,32 +10,34 @@ import java.util.*;
 
 public class InvertedIndex implements SearchIndex {
     private Map<String, List<Integer>> index = new HashMap<>();
-    private final List<String> docNames = new ArrayList<>();
+    private int currentDocId = -1;
     private boolean isSealed = false;
 
     /**
-     * Adds a term to the index for a given document ID. Document IDs must be added in increasing order.
-     * @param docId
+     * Adds a term to the index for the current document. Position is ignored
      * @param term
+     * @param position
      */
     @Override
-    public void add(int docId, String term) {
-        if (isSealed) {
-            throw new IllegalStateException("Index is sealed! Cannot add new documents.");
-        }
+    public void add(String term, int position) {
+        if (isSealed) throw new IllegalStateException("Index is sealed!");
+        if (currentDocId < 0) throw new IllegalStateException("Call startNewDocument() first!");
+
         List<Integer> postings = index.computeIfAbsent(term, k -> new ArrayList<>());
 
         if (!postings.isEmpty()) {
             int lastId = postings.getLast();
-            if (lastId == docId) {
+            if (lastId == currentDocId) {
                 return;
             }
-            if (lastId > docId) {
-                throw new IllegalArgumentException("DocIDs must be added in increasing order! Last: " + lastId + ", New: " + docId);
-            }
         }
+        postings.add(currentDocId);
+    }
 
-        postings.add(docId);
+    @Override
+    public void startNewDocument() {
+        if (isSealed) throw new IllegalStateException("Index is sealed!");
+        currentDocId++;
     }
 
     /**
@@ -59,30 +61,9 @@ public class InvertedIndex implements SearchIndex {
 
     @Override
     public SearchResult search(String term) {
+        if (!isSealed) throw new IllegalStateException("Index is not sealed!");
         List<Integer> ids = index.get(term);
         return new ListResult(ids == null ? Collections.emptyList() : ids);
-    }
-
-    /**
-     * Doc IDs start with 0
-     * @param docName
-     */
-    @Override
-    public void registerDoc(String docName) {
-        docNames.add(docName);
-    }
-
-    @Override
-    public String getDocName(int docId) {
-        if(docId < 0 || docId >= docNames.size()) {
-            throw new IllegalArgumentException("Invalid docId: " + docId + ". Valid range is 0 to " + (docNames.size() - 1));
-        }
-        return docNames.get(docId);
-    }
-
-    @Override
-    public int getDocCount() {
-        return docNames.size();
     }
 
     @Override
@@ -91,11 +72,6 @@ public class InvertedIndex implements SearchIndex {
             seal();
         }
         try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(path.toFile())))) {
-            out.writeInt(docNames.size());
-            for (String docName : docNames) {
-                out.writeUTF(docName);
-            }
-
             out.writeInt(index.size());
             for (Map.Entry<String, List<Integer>> entry : index.entrySet()) {
                 out.writeUTF(entry.getKey());
@@ -112,12 +88,7 @@ public class InvertedIndex implements SearchIndex {
     public void load(Path path) throws IOException {
         this.index = new TreeMap<>();
         this.isSealed = true;
-        docNames.clear();
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(path.toFile())))) {
-            int docCount = in.readInt();
-            for (int i = 0; i < docCount; i++) {
-                docNames.add(in.readUTF());
-            }
             int termCount = in.readInt();
             for (int i = 0; i < termCount; i++) {
                 String term = in.readUTF();
@@ -133,9 +104,5 @@ public class InvertedIndex implements SearchIndex {
 
     public List<String> getAllTerms() {
         return new ArrayList<>(index.keySet());
-    }
-
-    public boolean hasTerm(String term) {
-        return index.containsKey(term);
     }
 }

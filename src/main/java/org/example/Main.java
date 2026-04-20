@@ -44,8 +44,8 @@ public class Main {
     private static final Path REPORT_TXT = OUTPUT_DIR.resolve("dictionary.txt");
     private static final Path REPORT_BIN = OUTPUT_DIR.resolve("dictionary.bin");
 
-    private static final Path GUTENBERG_TOKENS_DIR = Paths.get("D:\\1Documents\\gutenberg_full\\SPGC-tokens-2018-07-18");
-//    private static final Path GUTENBERG_TOKENS_DIR = Paths.get("D:\\1Documents\\gutenberg_small");
+//    private static final Path GUTENBERG_TOKENS_DIR = Paths.get("D:\\1Documents\\gutenberg_full\\SPGC-tokens-2018-07-18");
+    private static final Path GUTENBERG_TOKENS_DIR = Paths.get("D:\\1Documents\\gutenberg_small");
     private static final Path GUTENBERG_CSV_FILE = Paths.get("D:\\1Documents\\gutenberg_full\\SPGC-metadata-2018-07-18.csv");
     private static final Path GUTENBERG_INDEX_DIR = Paths.get("D:\\1Documents\\gutenberg_index");
 
@@ -59,20 +59,22 @@ public class Main {
 
     public static void main(String[] args) {
         ensureDirectories();
-        practicalTask1();
+//        practicalTask1();
 
         boolean forceRebuild = true;
 
-        practicalTask2(forceRebuild);
-        practicalTask3BiWord(forceRebuild);
-        practicalTask3Positional(forceRebuild);
-        practicalTask4Wildcard(forceRebuild);
+//        practicalTask2(forceRebuild);
+//        practicalTask3BiWord(forceRebuild);
+//        practicalTask3Positional(forceRebuild);
+//        practicalTask4Wildcard(forceRebuild);
 
         //Task 5
         buildFullRegistry();
         loadFullRegistry();
-
-        printFullRegistry();
+//        printFullRegistry();
+        if (activeRegistry != null) {
+            runSpimi();
+        }
     }
 
     private static void ensureDirectories() {
@@ -86,6 +88,51 @@ public class Main {
         }
     }
 
+    private static void runSpimi() {
+        int tokenLimit = 50_000_000;
+        SpimiInverter inverter = new SpimiInverter(tokenLimit, GUTENBERG_INDEX_DIR);
+
+        int totalDocs = activeRegistry.getDocCount();
+        System.out.println("\nStarting SPIMI inversion for " + totalDocs + " documents...");
+        long startTime = System.currentTimeMillis();
+
+        for (int i = 0; i < totalDocs; i++) {
+            DocumentMetadata meta = activeRegistry.getMetadata(i);
+            Path tokenFile = GUTENBERG_TOKENS_DIR.resolve(meta.gutenbergId() + "_tokens.txt");
+
+            if (Files.exists(tokenFile)) {
+                inverter.startNewDocument(i);
+                try {
+                    inverter.indexDocument(tokenFile);
+                } catch (IOException e) {
+                    System.err.println("\nFailed to read " + tokenFile.getFileName() + ": " + e.getMessage());
+                }
+            } else {
+                System.err.println("\nMissing token file: " + tokenFile.getFileName());
+            }
+
+            //for every 100 docs
+            if (i % 100 == 0 || i == totalDocs - 1) {
+                System.out.printf("\rProcessing document %d of %d (%.2f%%)",
+                        i + 1, totalDocs, (i + 1.0) / totalDocs * 100);
+            }
+        }
+
+        System.out.println("\nDocument processing complete. Executing final flush...");
+
+        try {
+            inverter.flushBlock();
+        } catch (IOException e) {
+            System.err.println("Final flush failed: " + e.getMessage());
+        }
+
+        long duration = System.currentTimeMillis() - startTime;
+        long mins = duration / 60000;
+        long secs = (duration % 60000) / 1000;
+        long ms = duration % 1000;
+        System.out.println("SPIMI Inversion completed in " + mins + " min " + secs + " sec " + ms + " ms.");
+    }
+
     private static void printFullRegistry() {
         if (activeRegistry == null) {
             System.out.println("No registry loaded to display.");
@@ -94,7 +141,7 @@ public class Main {
         int totalDocs = activeRegistry.getDocCount();
         System.out.println("Full registry total documents: " + totalDocs);
 
-        System.out.println("\n--- Registry Sample ---");
+        System.out.println("\nRegistry Sample");
         int displayLimit = Math.min(500, totalDocs);
         for (int i = 0; i < displayLimit; i++) {
             DocumentMetadata meta = activeRegistry.getMetadata(i);

@@ -1,6 +1,7 @@
 package org.example.index;
 
 import org.example.search.SearchResult;
+
 import java.io.IOException;
 import java.nio.file.Path;
 

@@ -11,10 +11,11 @@ import org.example.search.BiWordSearchEngine;
 import org.example.search.BooleanQueryEngine;
 import org.example.search.PositionalQueryEngine;
 import org.example.search.WildcardQueryEngine;
+import org.example.storage.BinaryDictionaryWriter;
 import org.example.storage.DictionaryWriter;
 import org.example.storage.JsonDictionaryWriter;
-import org.example.storage.BinaryDictionaryWriter;
 import org.example.storage.TextDictionaryWriter;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,25 +31,30 @@ public class Main {
     private static final Path OUTPUT_DIR = ROOT_DIR.resolve("out");
     private static final Path INDEX_DIR = ROOT_DIR.resolve("indexes");
 
+    private static final Path REGISTRY_FILE = INDEX_DIR.resolve("registry.dat");
     private static final Path MATRIX_INDEX_FILE = INDEX_DIR.resolve("matrix.idx");
     private static final Path INVERTED_INDEX_FILE = INDEX_DIR.resolve("inverted.idx");
     private static final Path BIWORD_INDEX_FILE = INDEX_DIR.resolve("biword.idx");
     private static final Path POSITIONAL_INDEX_FILE = INDEX_DIR.resolve("positional.idx");
-    private static final Path BTREE_INDEX_FILE = INDEX_DIR.resolve("btree.idx");
-    private static final Path PERMUTERM_INDEX_FILE = INDEX_DIR.resolve("permuterm.idx");
-    private static final Path KGRAM_INDEX_FILE = INDEX_DIR.resolve("kgram.idx");
 
     private static final Path REPORT_JSON = OUTPUT_DIR.resolve("dictionary.json");
     private static final Path REPORT_TXT = OUTPUT_DIR.resolve("dictionary.txt");
     private static final Path REPORT_BIN = OUTPUT_DIR.resolve("dictionary.bin");
 
+    private static final DocumentParser parser = new Fb2StaxParser();
+    private static final Tokenizer tokenizer = new RegexTokenizer();
+    private static final TermNormalizer normalizer = new LuceneSmartNormalizer();
+
     public static void main(String[] args) {
         ensureDirectories();
         practicalTask1();
-        practicalTask2();
-        practicalTask3BiWord();
-        practicalTask3Positional();
-        practicalTask4Wildcard();
+
+        boolean forceRebuild = true;
+
+        practicalTask2(forceRebuild);
+        practicalTask3BiWord(forceRebuild);
+        practicalTask3Positional(forceRebuild);
+        practicalTask4Wildcard(forceRebuild);
     }
 
     private static void ensureDirectories() {
@@ -62,18 +68,85 @@ public class Main {
         }
     }
 
-    private static void practicalTask4Wildcard() {
-        Tokenizer tokenizer = new RegexTokenizer();
-        TermNormalizer normalizer = new LuceneSmartNormalizer();
-        DocumentParser parser = new Fb2StaxParser();
-        boolean forceRebuild = true;
+    private static void buildIndexes(DocumentRegistry registry, Map<SearchIndex, Path> activeIndexes, boolean forceRebuild) {
+        if (!forceRebuild && Files.exists(REGISTRY_FILE)) {
+            System.out.println("Loading registry and indexes from disk...");
+            try {
+                long start = System.currentTimeMillis();
+                registry.load(REGISTRY_FILE);
+                for (Map.Entry<SearchIndex, Path> entry : activeIndexes.entrySet()) {
+                    entry.getKey().load(entry.getValue());
+                }
+                System.out.println("Successfully loaded in " + (System.currentTimeMillis() - start) + " ms. Total docs: " + registry.getDocCount());
+                return;
+            } catch (IOException e) {
+                System.err.println("Failed to load from disk, rebuilding... Error: " + e.getMessage());
+            }
+        }
+
+        System.out.println("Building indexes from scratch...");
+        long start = System.currentTimeMillis();
+
+        try (Stream<Path> fileStream = Files.list(DOCUMENTS_DIR)) {
+            List<Path> fileList = fileStream.filter(p -> p.toString().endsWith(".fb2")).toList();
+
+            for (Path path : fileList) {
+                registry.registerDoc(path.getFileName().toString());
+
+                for (SearchIndex index : activeIndexes.keySet()) {
+                    index.startNewDocument();
+                }
+
+                AtomicInteger posCounter = new AtomicInteger(0);
+                parser.parse(path, text -> {
+                    tokenizer.tokenize(text)
+                            .map(normalizer::normalize)
+                            .filter(term -> term != null && !term.isBlank())
+                            .forEach(term -> {
+                                int pos = posCounter.getAndIncrement();
+                                for (SearchIndex index : activeIndexes.keySet()) {
+                                    index.add(term, pos);
+                                }
+                            });
+                });
+            }
+        } catch (IOException e) {
+            System.err.println("Error reading files: " + e.getMessage());
+        }
+
+        System.out.println("Sealing and saving to disk...");
+        try {
+            registry.save(REGISTRY_FILE);
+            for (Map.Entry<SearchIndex, Path> entry : activeIndexes.entrySet()) {
+                SearchIndex index = entry.getKey();
+                index.seal();
+                index.save(entry.getValue());
+            }
+            long time = System.currentTimeMillis() - start;
+            System.out.println("Built and saved in " + time + " ms. Docs: " + registry.getDocCount());
+        } catch (IOException e) {
+            System.err.println("Error saving to disk: " + e.getMessage());
+        }
+    }
+
+    private static void practicalTask4Wildcard(boolean forceRebuild) {
+        System.out.println("\n                  Task 4");
+        DocumentRegistry registry = new DocumentRegistry();
+        InvertedIndex invertedIndex = new InvertedIndex();
+
+        buildIndexes(registry, Map.of(invertedIndex, INVERTED_INDEX_FILE), forceRebuild);
+
+        List<String> dictionary = invertedIndex.getAllTerms();
+
+        System.out.println("\nBuilding wildcard dictionaries from " + dictionary.size() + " unique terms...");
+        long startWildcard = System.currentTimeMillis();
         BidirectionalBTreeIndex bTreeIndex = new BidirectionalBTreeIndex(32);
         PermutermIndex permutermIndex = new PermutermIndex(32);
         KGramIndex kGramIndex = new KGramIndex(3, 32);
-
-        buildOrLoadSingleTermIndex(bTreeIndex, BTREE_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
-        buildOrLoadSingleTermIndex(permutermIndex, PERMUTERM_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
-        buildOrLoadSingleTermIndex(kGramIndex, KGRAM_INDEX_FILE, forceRebuild, parser, tokenizer, normalizer);
+        bTreeIndex.buildFromDictionary(dictionary);
+        permutermIndex.buildFromDictionary(dictionary);
+        kGramIndex.buildFromDictionary(dictionary);
+        System.out.println("Wildcard dictionaries built in " + (System.currentTimeMillis() - startWildcard) + " ms.");
 
         List<String> wildcardQueries = List.of(
                 "зах*",
@@ -86,118 +159,34 @@ public class Main {
                 "*iq*"
         );
 
-        testWildcardEngine("Bidirectional B-Tree", bTreeIndex, wildcardQueries);
-        testWildcardEngine("Permuterm Index", permutermIndex, wildcardQueries);
-        testWildcardEngine("k-Gram Index", kGramIndex, wildcardQueries);
+        testWildcardEngine("Bidirectional B-Tree", new WildcardQueryEngine(bTreeIndex, invertedIndex), wildcardQueries, registry);
+        testWildcardEngine("Permuterm Index", new WildcardQueryEngine(permutermIndex, invertedIndex), wildcardQueries, registry);
+        testWildcardEngine("k-Gram Index", new WildcardQueryEngine(kGramIndex, invertedIndex), wildcardQueries, registry);
     }
 
-    private static void buildOrLoadSingleTermIndex(SearchIndex index, Path indexPath, boolean forceRebuild,
-                                                   DocumentParser parser, Tokenizer tokenizer, TermNormalizer normalizer) {
-        try {
-            if (!forceRebuild && Files.exists(indexPath)) {
-                System.out.println("Loading " + index.getClass().getSimpleName() + " from disk...");
-                long start = System.currentTimeMillis();
-                index.load(indexPath);
-                System.out.println("Loaded in: " + (System.currentTimeMillis() - start) + " ms");
-            } else {
-                System.out.println("Building " + index.getClass().getSimpleName() + " from scratch...");
-                long start = System.currentTimeMillis();
-
-                int docIdCounter = 0;
-                try (Stream<Path> fileStream = Files.list(DOCUMENTS_DIR)) {
-                    List<Path> fileList = fileStream.filter(p -> p.toString().endsWith(".fb2")).toList();
-                    for (Path path : fileList) {
-                        int currentDocId = docIdCounter++;
-                        index.registerDoc(path.getFileName().toString());
-
-                        parser.parse(path, text -> {
-                            tokenizer.tokenize(text)
-                                    .map(normalizer::normalize)
-                                    .filter(term -> term != null && !term.isBlank())
-                                    .forEach(term -> index.add(currentDocId, term));
-                        });
-                    }
-                }
-                index.seal();
-                System.out.println("Built in " + (System.currentTimeMillis() - start) + " ms. Docs: " + index.getDocCount());
-                index.save(indexPath);
-            }
-        } catch (IOException e) {
-            System.err.println("Error processing index: " + e.getMessage());
-        }
-    }
-
-    private static void testWildcardEngine(String name, WildcardIndex index, List<String> queries) {
+    private static void testWildcardEngine(String name, WildcardQueryEngine engine, List<String> queries, DocumentRegistry registry) {
         System.out.println("\n             Testing Wildcard Engine: " + name);
-        WildcardQueryEngine engine = new WildcardQueryEngine(index);
 
         for (String q : queries) {
             long searchStart = System.nanoTime();
             List<Integer> results = engine.search(q);
             long searchTime = System.nanoTime() - searchStart;
 
-            System.out.printf("\nQuery: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
+            System.out.printf("\nQuery: \"%s\" | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
             if (!results.isEmpty()) {
                 int maxDisplay = 20;
-                List<String> docNames = results.stream().limit(maxDisplay).map(index::getDocName).toList();
+                List<String> docNames = results.stream().limit(maxDisplay).map(registry::getDocName).toList();
                 System.out.println("Docs: " + docNames + (results.size() > maxDisplay ? " ..." : ""));
             }
         }
     }
 
-    private static void practicalTask3Positional() {
+    private static void practicalTask3Positional(boolean forceRebuild) {
+        System.out.println("\n                 Task 3: Positional Index");
+        DocumentRegistry registry = new DocumentRegistry();
         PositionalIndex positionalIndex = new PositionalIndex();
-        Tokenizer tokenizer = new RegexTokenizer();
-        TermNormalizer normalizer = new LuceneSmartNormalizer();
-        DocumentParser parser = new Fb2StaxParser();
 
-        boolean forceRebuild = true;
-
-        try {
-            if (!forceRebuild && Files.exists(POSITIONAL_INDEX_FILE)) {
-                System.out.println("Loading Positional Index from disk...");
-                long start = System.currentTimeMillis();
-                positionalIndex.load(POSITIONAL_INDEX_FILE);
-                System.out.println("Loaded in: " + (System.currentTimeMillis() - start) + " ms");
-            } else {
-                System.out.println("Building Positional Index from scratch...");
-                long start = System.currentTimeMillis();
-
-                int docIdCounter = 0;
-                try (Stream<Path> fileStream = Files.list(DOCUMENTS_DIR)) {
-                    List<Path> fileList = fileStream.filter(p -> p.toString().endsWith(".fb2")).toList();
-
-                    for (Path path : fileList) {
-                        int currentDocId = docIdCounter++;
-                        positionalIndex.registerDoc(path.getFileName().toString());
-
-                        AtomicInteger posCounter = new AtomicInteger(0);
-
-                        parser.parse(path, text -> {
-                            tokenizer.tokenize(text)
-                                    .map(normalizer::normalize)
-                                    .forEach(term -> {
-                                        if (term != null && !term.isBlank()) {
-                                            positionalIndex.add(currentDocId, term, posCounter.getAndIncrement());
-                                        }
-                                    });
-                        });
-                    }
-                }
-
-                positionalIndex.seal();
-                long buildTime = System.currentTimeMillis() - start;
-                System.out.println("Positional Index built in " + buildTime + " ms");
-                System.out.println("Total docs: " + positionalIndex.getDocCount());
-
-                long startSave = System.currentTimeMillis();
-                positionalIndex.save(POSITIONAL_INDEX_FILE);
-                System.out.println("Saved to disk in: " + (System.currentTimeMillis() - startSave) + " ms");
-                System.out.println("File size: " + Files.size(POSITIONAL_INDEX_FILE) / 1024 + " KB");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        buildIndexes(registry, Map.of(positionalIndex, POSITIONAL_INDEX_FILE), forceRebuild);
 
         PositionalQueryEngine engine = new PositionalQueryEngine(positionalIndex, tokenizer, normalizer);
 
@@ -212,9 +201,9 @@ public class Main {
             List<Integer> results = engine.searchPhrase(q);
             long searchTime = System.nanoTime() - searchStart;
 
-            System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
+            System.out.printf("Query: \"%s\" | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
             if (!results.isEmpty()) {
-                System.out.println("Docs: " + results.stream().map(positionalIndex::getDocName).toList());
+                System.out.println("Docs: " + results.stream().map(registry::getDocName).toList());
             }
         }
 
@@ -231,67 +220,20 @@ public class Main {
             List<Integer> results = engine.searchProximity(q);
             long searchTime = System.nanoTime() - searchStart;
 
-            System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
+            System.out.printf("Query: \"%s\" | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
             if (!results.isEmpty()) {
-                System.out.println("Docs: " + results.stream().map(positionalIndex::getDocName).toList());
+                System.out.println("Docs: " + results.stream().map(registry::getDocName).toList());
             }
         }
     }
 
-    private static void practicalTask3BiWord() {
-        SearchIndex biWordIndex = new InvertedIndex();
-        Tokenizer tokenizer = new RegexTokenizer();
-        TermNormalizer normalizer = new LuceneSmartNormalizer();
-        DocumentParser parser = new Fb2StaxParser();
+    private static void practicalTask3BiWord(boolean forceRebuild) {
+        System.out.println("\n                  Task 3: BiWord Index");
+        DocumentRegistry registry = new DocumentRegistry();
 
-        boolean forceRebuild = true;
+        SearchIndex biWordIndex = new BiWordIndex(new InvertedIndex());
 
-        try {
-            if (!forceRebuild && Files.exists(BIWORD_INDEX_FILE)) {
-                System.out.println("Loading biword Index from disk...");
-                long start = System.currentTimeMillis();
-                biWordIndex.load(BIWORD_INDEX_FILE);
-                System.out.println("Loaded in: " + (System.currentTimeMillis() - start) + " ms");
-            } else {
-                System.out.println("Building biword Index from scratch...");
-                long start = System.currentTimeMillis();
-
-                int docIdCounter = 0;
-
-                try (Stream<Path> fileStream = Files.list(DOCUMENTS_DIR)) {
-                    List<Path> fileList = fileStream.filter(p -> p.toString().endsWith(".fb2")).toList();
-
-                    for (Path path : fileList) {
-                        int currentDocId = docIdCounter++;
-                        biWordIndex.registerDoc(path.getFileName().toString());
-
-                        parser.parse(path, text -> {
-                            List<String> tokens = tokenizer.tokenize(text)
-                                    .map(normalizer::normalize)
-                                    .filter(term -> term != null && !term.isBlank())
-                                    .toList();
-
-                            for (int i = 0; i < tokens.size() - 1; i++) {
-                                String biWord = tokens.get(i) + " " + tokens.get(i + 1);
-                                biWordIndex.add(currentDocId, biWord);
-                            }
-                        });
-                    }
-                }
-
-                biWordIndex.seal();
-                long buildTime = System.currentTimeMillis() - start;
-                System.out.println("biword Index built in " + buildTime + " ms");
-                System.out.println("Total docs: " + biWordIndex.getDocCount());
-
-                long startSave = System.currentTimeMillis();
-                biWordIndex.save(BIWORD_INDEX_FILE);
-                System.out.println("Saved to disk in: " + (System.currentTimeMillis() - startSave) + " ms");
-                System.out.println("File size: " + Files.size(BIWORD_INDEX_FILE) / 1024 + " KB");
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        buildIndexes(registry, Map.of(biWordIndex, BIWORD_INDEX_FILE), forceRebuild);
 
         BiWordSearchEngine searchEngine = new BiWordSearchEngine(biWordIndex, tokenizer, normalizer);
 
@@ -303,40 +245,34 @@ public class Main {
                 "had thought ahead of everyone else"
         );
 
-        System.out.println("\nbiword Phrase Search Test:");
+        System.out.println("\nBiWord Phrase Search Test:");
         for (String q : queries) {
             long searchStart = System.nanoTime();
             List<Integer> results = searchEngine.searchPhrase(q);
             long searchTime = System.nanoTime() - searchStart;
 
-            System.out.printf("Query: '%s' | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
+            System.out.printf("Query: \"%s\" | Found: %d docs (%,d ns)\n", q, results.size(), searchTime);
             if (!results.isEmpty()) {
-                System.out.println("Docs: " + results.stream().map(biWordIndex::getDocName).toList());
+                System.out.println("Docs: " + results.stream().map(registry::getDocName).toList());
             }
         }
     }
 
-    private static void practicalTask2() {
+    private static void practicalTask2(boolean forceRebuild) {
+        System.out.println("\n                 Task 2");
+        DocumentRegistry registry = new DocumentRegistry();
         SearchIndex matrixIndex = new IncidenceMatrixIndex();
         SearchIndex invertedIndex = new InvertedIndex();
 
-        boolean forceRebuild = true;
+        Map<SearchIndex, Path> indexes = Map.of(
+                matrixIndex, MATRIX_INDEX_FILE,
+                invertedIndex, INVERTED_INDEX_FILE
+        );
 
-        try {
-            System.out.println("Processing incidence matrix index...");
-            processIndex(matrixIndex, MATRIX_INDEX_FILE, DOCUMENTS_DIR, forceRebuild);
-            System.out.println("\nProcessing inverted index...");
-            processIndex(invertedIndex, INVERTED_INDEX_FILE, DOCUMENTS_DIR, forceRebuild);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        runSearchEngine(matrixIndex, invertedIndex);
-    }
+        buildIndexes(registry, indexes, forceRebuild);
 
-    private static void runSearchEngine(SearchIndex matrix, SearchIndex inverted) {
-        TermNormalizer normalizer = new LuceneSmartNormalizer();
-        BooleanQueryEngine engineMatrix = new BooleanQueryEngine(matrix, normalizer);
-        BooleanQueryEngine engineInverted = new BooleanQueryEngine(inverted, normalizer);
+        BooleanQueryEngine engineMatrix = new BooleanQueryEngine(matrixIndex, normalizer, registry.getDocCount());
+        BooleanQueryEngine engineInverted = new BooleanQueryEngine(invertedIndex, normalizer, registry.getDocCount());
 
         List<String> queries = List.of(
                 "friend",
@@ -352,7 +288,7 @@ public class Main {
         System.out.println("\nBoolean search test:");
 
         for (String q : queries) {
-            System.out.println("\nQuery: " + q);
+            System.out.println("\nQuery: \"" + q + '"');
 
             long startM = System.nanoTime();
             List<Integer> resM = engineMatrix.search(q);
@@ -369,65 +305,13 @@ public class Main {
                 System.err.println("Results differ!");
             } else {
                 List<String> docNames = resM.stream() // .limit(5)
-                        .map(matrix::getDocName).toList();
+                        .map(registry::getDocName).toList();
                 System.out.println("Docs: " + docNames);
             }
         }
     }
 
-    private static void processIndex(SearchIndex index, Path storagePath, Path dataDir, boolean rebuild) throws IOException {
-        if (!rebuild && Files.exists(storagePath)) {
-            long start = System.currentTimeMillis();
-            index.load(storagePath);
-            System.out.println("Loaded from disk in: " + (System.currentTimeMillis() - start) + " ms");
-        } else {
-            long buildTime = buildIndex(index, dataDir);
-            System.out.println("Built from scratch in: " + buildTime + " ms");
-
-            long startSave = System.currentTimeMillis();
-            index.save(storagePath);
-            System.out.println("Saved to disk in: " + (System.currentTimeMillis() - startSave) + " ms");
-            System.out.println("File size: " + Files.size(storagePath) / 1024 + " KB");
-        }
-    }
-
-    private static long buildIndex(SearchIndex index, Path dataDir) throws IOException {
-        long start = System.currentTimeMillis();
-
-        DocumentParser parser = new Fb2StaxParser();
-        Tokenizer tokenizer = new RegexTokenizer();
-        TermNormalizer normalizer = new LuceneSmartNormalizer();
-
-        int docIdCounter = 0;
-
-        try (Stream<Path> files = Files.list(dataDir)) {
-            List<Path> fileList = files.filter(p -> p.toString().endsWith(".fb2")).toList();
-
-            for (Path path : fileList) {
-                int currentDocId = docIdCounter++;
-                String fileName = path.getFileName().toString();
-
-                index.registerDoc(fileName);
-
-                parser.parse(path, text -> {
-                    tokenizer.tokenize(text)
-                            .map(normalizer::normalize)
-                            .filter(term -> term != null && !term.isBlank())
-                            .forEach(term -> {
-                                index.add(currentDocId, term);
-                            });
-                });
-            }
-        }
-        index.seal();
-        return System.currentTimeMillis() - start;
-    }
-
-
     private static void practicalTask1() {
-        Tokenizer tokenizer = new RegexTokenizer();
-        DocumentParser parser = new Fb2StaxParser();
-
         Collator uaCollator = Collator.getInstance(Locale.forLanguageTag("uk-UA"));
         Map<String, Integer> sortedDictionary = new TreeMap<>(uaCollator);
 

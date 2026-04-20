@@ -1,7 +1,7 @@
 package org.example.index;
 
-import org.example.search.SearchResult;
 import org.example.search.ListResult;
+import org.example.search.SearchResult;
 
 import java.io.*;
 import java.nio.file.Path;
@@ -104,9 +104,5 @@ public class InvertedIndex implements SearchIndex {
 
     public List<String> getAllTerms() {
         return new ArrayList<>(index.keySet());
-    }
-
-    public boolean hasTerm(String term) {
-        return index.containsKey(term);
     }
 }

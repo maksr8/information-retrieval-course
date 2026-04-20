@@ -1,6 +1,8 @@
 package org.example.search;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.List;
 
 public class BitSetResult implements SearchResult {
     private final BitSet bitSet;

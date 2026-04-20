@@ -5,7 +5,10 @@ import org.example.search.SearchResult;
 
 import java.io.*;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.BitSet;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
 
 public class IncidenceMatrixIndex implements SearchIndex {
     private Map<String, BitSet> matrix = new HashMap<>();

@@ -34,10 +34,14 @@ public class SpimiInverter {
             AtomicInteger positionCounter = new AtomicInteger(0);
             lines.forEach(line -> {
                 String term = line.trim();
-                if (!term.isEmpty()) {
-                    int pos = positionCounter.getAndIncrement();
-                    addToken(term, pos);
+                if (term.isEmpty()) {
+                    return;
                 }
+                int pos = positionCounter.getAndIncrement();
+                if (term.length() > 50) {
+                    return;
+                }
+                addToken(term, pos);
             });
         }
     }

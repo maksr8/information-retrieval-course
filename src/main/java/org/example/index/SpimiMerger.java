@@ -104,7 +104,7 @@ public class SpimiMerger {
             minHeap.add(new BlockStream(blockPath));
         }
 
-        Map<String, Long> lexicon = new HashMap<>();
+        Map<String, Long> lexicon = new LinkedHashMap<>();
         int totalUniqueTerms = 0;
 
         FileOutputStream fos = new FileOutputStream(outputIndexPath.toFile());
@@ -193,7 +193,7 @@ public class SpimiMerger {
 
     public static Map<String, Long> loadLexicon(Path lexiconPath) {
         System.out.println("Loading Lexicon from disk...");
-        Map<String, Long> lexicon = new HashMap<>();
+        Map<String, Long> lexicon = new LinkedHashMap<>();
 
         try (DataInputStream in = new DataInputStream(
                 new BufferedInputStream(new FileInputStream(lexiconPath.toFile()), 65536))) {

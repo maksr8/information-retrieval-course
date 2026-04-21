@@ -30,7 +30,7 @@ public class WildcardQueryEngine {
                 .filter(term -> regexPattern.matcher(term).matches())
                 .toList();
 
-        System.out.println("\nValid terms for wildcard '" + query + "': " + validTerms);
+        System.out.println("\nValid terms for wildcard '" + query + "': " + validTerms.stream().limit(10).toList());
 
         SearchResult combined = null;
         for (String term : validTerms) {
